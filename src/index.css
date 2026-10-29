@@ -1,0 +1,223 @@
+@import 'tailwindcss';
+
+/* Design tokens. Light-only by design: a calm, high-contrast admin + parent surface. */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-bg: #f5f6fb;
+  --color-surface: #ffffff;
+  --color-muted: #f1f3f9;
+  --color-ink: #1e1b4b;
+  --color-ink-2: #475569;
+  --color-ink-3: #64748b;
+  --color-line: #e2e6f0;
+  --color-line-strong: #c7d2fe;
+
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-soft: #eef2ff;
+  --color-on-primary: #ffffff;
+  --color-ring: #4f46e5;
+
+  /* School-bus amber: brand mark and highlights. */
+  --color-accent: #fbbf24;
+  --color-accent-hover: #f59e0b;
+  --color-accent-soft: #fef6dc;
+  --color-on-accent: #1e1b4b;
+
+  /* Status (reserved for state, always paired with an icon + label). */
+  --color-success: #0ca30c;
+  --color-success-ink: #006300;
+  --color-success-soft: #e8f6e8;
+  --color-warning: #fab219;
+  --color-warning-ink: #7a4d00;
+  --color-warning-soft: #fff4d9;
+  --color-danger: #d03b3b;
+  --color-danger-hover: #b52f2f;
+  --color-danger-ink: #a12626;
+  --color-danger-soft: #fdecec;
+
+  --shadow-card: 0 1px 2px rgb(30 27 75 / 0.04), 0 4px 16px -4px rgb(30 27 75 / 0.08);
+  --shadow-float: 0 8px 30px -6px rgb(30 27 75 / 0.25), 0 2px 6px rgb(30 27 75 / 0.08);
+
+  --animate-fade-in: fade-in 200ms ease-out both;
+  --animate-rise: rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pulse-ring: pulse-ring 1.8s ease-out infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pulse-ring {
+    0% { transform: scale(0.6); opacity: 0.7; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Leaflet ---------- */
+
+/* Own stacking context so map panes (z-index 400+) never cover the header or dialogs. */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+  font-family: var(--font-sans);
+  background: #eef0f4;
+}
+/* Mute the basemap so route colors and markers carry the meaning. */
+.leaflet-tile-pane {
+  filter: saturate(0.4) brightness(1.04) contrast(0.92);
+}
+.leaflet-container:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: -2px;
+}
+.leaflet-bar {
+  border: 1px solid var(--color-line) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-card) !important;
+}
+.leaflet-bar a {
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  color: var(--color-ink) !important;
+}
+.leaflet-control-attribution {
+  font-size: 10px;
+  border-top-left-radius: 6px;
+}
+.leaflet-tooltip.route-tooltip {
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-ink);
+  box-shadow: var(--shadow-float);
+}
+.map-crosshair .leaflet-container,
+.map-crosshair.leaflet-container {
+  cursor: crosshair;
+}
+
+/* Markers are plain HTML (divIcon) so they can carry text labels next to color. */
+.map-icon {
+  background: transparent;
+  border: 0;
+}
+.pin-school {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--color-ink);
+  color: var(--color-accent);
+  border: 3px solid #fff;
+  box-shadow: var(--shadow-float);
+}
+.pin-stop {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+.pin-stop.is-editable {
+  width: 28px;
+  height: 28px;
+  cursor: grab;
+}
+.pin-home {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50% 50% 50% 4px;
+  transform: rotate(-45deg);
+  background: var(--color-primary);
+  border: 3px solid #fff;
+  box-shadow: var(--shadow-float);
+}
+.pin-home > svg {
+  transform: rotate(45deg);
+  color: #fff;
+}
+.pin-home.is-draggable {
+  cursor: grab;
+}
+.pin-pickup {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  border: 5px solid currentColor;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+.pin-bus {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 9px 0 7px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: var(--shadow-float);
+  transform: translate(-50%, -50%);
+}
+.pin-bus::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  border: 2px solid var(--pin-color);
+  opacity: 0;
+}
+.pin-bus.is-moving::after {
+  animation: var(--animate-pulse-ring);
+}
