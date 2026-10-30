@@ -1,10 +1,11 @@
 // Read-only picture of the plan for the UI: timings, riders, distances and fees.
 // Everything here is derived, so it can never drift from the plan itself.
-import { travelMeters } from '../distance'
+import { pointKey, travelMeters } from '../distance'
 import { buildGeometry, haversine, pointAlong, routeKey, type RouteGeometry } from '../geo'
 import { narrowMeters } from '../roads'
 import { parseClock } from '../time'
-import type { AppState, BoardingPoint, FeeSlab, LatLng, Route, Settings, Student, Vehicle, WaitReason } from '../types'
+import type { AppState, BoardingPoint, LatLng, Route, RoutePath, Settings, Student, Vehicle, WaitReason } from '../types'
+import { feeForStop } from './fees'
 import { metersPerMinute } from './plan'
 
 export function arrivalMinutes(settings: Settings): number {
@@ -80,17 +81,40 @@ export interface PlanView {
   load: Map<string, number>
 }
 
-/** Monthly fee for a distance. Slabs are ordered; the last one has no upper limit. */
-export function feeForKm(km: number, slabs: FeeSlab[]): number {
-  for (const slab of slabs) {
-    if (slab.upToKm === null || km <= slab.upToKm) return slab.monthly
-  }
-  return slabs[slabs.length - 1]?.monthly ?? 0
-}
+export { feeForKm, feeForStop } from './fees'
 
-/** Fees depend on how far the boarding point is from school, not on the vehicle's route. */
-export function feeForStop(position: LatLng, settings: Settings): number {
-  return feeForKm(travelMeters(position, settings.location) / 1000, settings.feeSlabs)
+/**
+ * A route whose stops just changed: legs between the same two points keep their
+ * road geometry and only the new legs are straight, until the new road path arrives.
+ */
+function reuseRoadLegs(saved: RoutePath, waypoints: LatLng[]): { path: LatLng[]; legs: number[] } {
+  const oldKeys = saved.key.split(';')
+  const { cumulative, length } = buildGeometry(saved.path)
+  const scale = length / (saved.legs.reduce((sum, m) => sum + m, 0) || 1)
+  const boundary = [0]
+  let run = 0
+  let index = 0
+  for (const leg of saved.legs) {
+    run += leg * scale
+    while (index < cumulative.length - 1 && cumulative[index] < run) index++
+    boundary.push(index)
+  }
+
+  const path: LatLng[] = []
+  const legs: number[] = []
+  for (let i = 1; i < waypoints.length; i++) {
+    const from = pointKey(waypoints[i - 1])
+    const to = pointKey(waypoints[i])
+    const old = oldKeys.findIndex((key, n) => key === from && oldKeys[n + 1] === to)
+    if (old >= 0 && saved.legs[old] !== undefined) {
+      path.push(...saved.path.slice(boundary[old], boundary[old + 1] + 1))
+      legs.push(saved.legs[old])
+    } else {
+      path.push(waypoints[i - 1], waypoints[i])
+      legs.push(travelMeters(waypoints[i - 1], waypoints[i]))
+    }
+  }
+  return { path, legs }
 }
 
 const narrowCache = new Map<string, number>()
@@ -115,8 +139,9 @@ function buildRouteView(state: AppState, vehicle: Vehicle, route: Route, stopsBy
   const hasStops = stops.length > 0
 
   // Road metres per leg, exact from the road path or estimated until it arrives.
-  const legs = fresh ? saved.legs : waypoints.slice(1).map((p, i) => travelMeters(waypoints[i], p))
-  const geometry = buildGeometry(hasStops ? (fresh ? saved.path : waypoints) : [])
+  const stitched = !fresh && saved && hasStops ? reuseRoadLegs(saved, waypoints) : null
+  const legs = fresh ? saved.legs : (stitched?.legs ?? waypoints.slice(1).map((p, i) => travelMeters(waypoints[i], p)))
+  const geometry = buildGeometry(hasStops ? (fresh ? saved.path : (stitched?.path ?? waypoints)) : [])
   const legTotal = legs.reduce((sum, m) => sum + m, 0)
   // Legs are road metres, the drawn path may be straight: scale so positions land on the path.
   const scale = legTotal > 0 ? geometry.length / legTotal : 1

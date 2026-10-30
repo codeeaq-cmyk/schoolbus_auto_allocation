@@ -28,10 +28,12 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     let raf = 0
     let last = performance.now()
     const tick = (now: number) => {
+      // A frame can fire after stop() but before React has re-rendered; it must not restart the clock.
+      if (clockRef.current === null) return
       const dt = now - last
       if (dt >= FRAME_MS) {
         last = now
-        const next = (clockRef.current ?? tripWindow.start) + (dt / 1000) * speed
+        const next = clockRef.current + (dt / 1000) * speed
         clockRef.current = Math.min(next, tripWindow.end)
         setClock(clockRef.current)
         if (next >= tripWindow.end) {

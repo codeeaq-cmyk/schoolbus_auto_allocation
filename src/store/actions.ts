@@ -1,6 +1,7 @@
 // Every change to the demo goes through here. Each function takes the state and
 // returns the next one, keeping the plan valid and logging what the system did.
 import { haversine } from '../lib/geo'
+import { measurePlan } from '../lib/engine/baseline'
 import { effectiveWalk, makeStop, stopAccessAt } from '../lib/engine/boarding'
 import { countMoved, optimise, placeStudent, reconcilePlan, releaseStudent } from '../lib/engine/plan'
 import { nameForPoint, nearestRoad } from '../lib/roads'
@@ -11,10 +12,13 @@ import { uid } from './state'
 const ACTIVITY_LIMIT = 40
 /** Enough for a good plan without a noticeable pause when the school changes something. */
 const LIVE_ITERATIONS = 700
+/** For a deliberate, full rebuild, where a short wait for a better plan is worth it. */
+const FULL_ITERATIONS = 8000
 
 export const WAIT_REASON_TEXT: Record<WaitReason, string> = {
   'seats-full': 'every vehicle that can reach them is full',
   'no-van': 'their lane needs a van and no van has a seat',
+  'no-route': 'no vehicle passes close enough to be worth the detour',
   'no-road': 'no road a vehicle can use is within walking distance',
   'too-far': 'a direct ride would break the ride-time limit',
 }
@@ -45,7 +49,9 @@ function describeSeat(state: AppState, plan: Plan, student: Student): string {
 export function addStudent(state: AppState, student: Student): AppState {
   const next = { ...state, students: [...state.students, student] }
   const plan = placeStudent(next, student)
-  return log({ ...next, plan }, 'auto', describeSeat(state, plan, student))
+  const moved = countMoved(state.plan, plan)
+  const swap = moved > 0 ? ` ${moved === 1 ? 'One child' : `${moved} children`} moved to another vehicle to free a seat.` : ''
+  return log({ ...next, plan }, 'auto', `${describeSeat(state, plan, student)}${swap}`)
 }
 
 export function updateStudent(state: AppState, id: string, patch: Partial<Student>): AppState {
@@ -229,9 +235,13 @@ export function applyPlan(state: AppState, plan: Plan, summary: string): AppStat
   return log({ ...state, plan }, 'auto', `${summary}.`)
 }
 
-/** Full re-optimisation, including boarding points. Manual choices are kept. */
+/** Full re-optimisation, including boarding points. Manual choices are kept, and a worse plan is never applied. */
 export function reoptimise(state: AppState): AppState {
-  const plan = optimise(state, { recluster: true, stability: false, iterations: 1500 })
+  const plan = optimise(state, { recluster: true, stability: false, iterations: FULL_ITERATIONS })
+  const before = measurePlan(state)
+  const after = measurePlan({ ...state, plan })
+  const better = after.seated > before.seated || (after.seated === before.seated && after.profit > before.profit + 100)
+  if (!better) return log({ ...state, plan: { ...state.plan, optimisedAt: Date.now() } }, 'auto', 'Checked every route again: the current plan is still the best one found.')
   const moved = countMoved(state.plan, plan)
   return log({ ...state, plan }, 'auto', `All routes and boarding points re-optimised; ${moved} ${moved === 1 ? 'child' : 'children'} moved.`)
 }
@@ -245,7 +255,7 @@ export function updateSettings(state: AppState, patch: Partial<Settings>): AppSt
 
   if (!settings.autopilot) return log(next, 'manual', 'Settings changed. Autopilot is off, so the plan stays as it is until you re-optimise.')
   if (rebuildsStops) {
-    const plan = optimise(next, { recluster: true, stability: false, iterations: LIVE_ITERATIONS })
+    const plan = optimise(next, { recluster: true, stability: false, iterations: FULL_ITERATIONS })
     return log({ ...next, plan }, 'auto', 'Rules changed, so boarding points and routes were rebuilt.')
   }
   if (affectsRoutes) return replan(next, 'Rules changed.')
@@ -282,6 +292,6 @@ export function clearOverrides(state: AppState): AppState {
       routes: state.plan.routes.map((r) => ({ ...r, locked: false })),
     },
   }
-  const plan = optimise(cleared, { recluster: true, stability: false, iterations: 1500 })
+  const plan = optimise(cleared, { recluster: true, stability: false, iterations: FULL_ITERATIONS })
   return log({ ...cleared, plan }, 'auto', 'All manual choices cleared; the system re-planned everything.')
 }

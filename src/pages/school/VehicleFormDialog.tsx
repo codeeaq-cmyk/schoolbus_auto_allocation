@@ -104,15 +104,15 @@ function VehicleForm({ initial, mode, onCancel, onSubmit }: { initial: VehicleFi
             <label
               key={option}
               className={cn(
-                'flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
-                type === option ? 'border-primary bg-primary-soft' : 'border-line hover:border-line-strong',
+                'flex cursor-pointer items-start gap-2.5 rounded-2xl p-3.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
+                type === option ? 'gradient-primary text-white' : 'bg-muted text-ink hover:bg-tonal',
               )}
             >
               <input type="radio" name="vehicle-type" className="sr-only" checked={type === option} onChange={() => choose(option)} />
-              <VehicleIcon type={option} className="mt-0.5 size-5 shrink-0 text-ink" />
+              <VehicleIcon type={option} className="mt-0.5 size-5 shrink-0" />
               <span>
-                <span className="block text-sm font-bold text-ink">{VEHICLE_NAMES[option]}</span>
-                <span className="block text-xs text-ink-3">{option === 'bus' ? 'Wide roads only. Cheapest per child when full.' : 'Fits narrow lanes. Fewer seats.'}</span>
+                <span className="block text-sm font-bold">{VEHICLE_NAMES[option]}</span>
+                <span className={cn('block text-xs', type === option ? 'text-white/90' : 'text-ink-3')}>{option === 'bus' ? 'Wide roads only. Cheapest per child when full.' : 'Fits narrow lanes. Fewer seats.'}</span>
               </span>
             </label>
           ))}
@@ -137,7 +137,7 @@ function VehicleForm({ initial, mode, onCancel, onSubmit }: { initial: VehicleFi
         </Field>
       </div>
 
-      <details className="rounded-xl border border-line px-3.5 py-3">
+      <details className="rounded-2xl bg-muted px-3.5 py-3">
         <summary className="cursor-pointer text-sm font-semibold text-ink">Running costs (sample figures)</summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <Field id="vehicle-kmPerLitre" label="Km per litre" error={errors.kmPerLitre}>
@@ -155,7 +155,7 @@ function VehicleForm({ initial, mode, onCancel, onSubmit }: { initial: VehicleFi
         </div>
       </details>
 
-      <div className="mt-1 flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+      <div className="mt-1 flex flex-wrap justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>

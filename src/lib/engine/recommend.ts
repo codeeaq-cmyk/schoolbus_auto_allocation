@@ -74,9 +74,11 @@ export function* recommendationSteps(state: AppState, fleet: FleetEconomics): Ge
   const { settings, plan } = state
   const base = measurePlan(state)
   const seatsTaken = seatCounts(plan)
+  /** A saving only counts if nobody's longest ride gets worse than today or breaks the limit. */
+  const keepsRidesFair = (metrics: PlanMetrics) => metrics.rideMax <= Math.max(settings.maxRideMin, base.rideMax)
 
   // 1. Would a fresh plan beat the one that has built up over time?
-  const fresh = optimise(state, { recluster: true, stability: false, iterations: 700 })
+  const fresh = optimise(state, { recluster: true, stability: false, iterations: 1500 })
   const freshMetrics = measurePlan({ ...state, plan: fresh })
   const freshGain = freshMetrics.profit - base.profit
   const freshSeats = freshMetrics.seated - base.seated
@@ -97,7 +99,7 @@ export function* recommendationSteps(state: AppState, fleet: FleetEconomics): Ge
   }
 
   // 2. Children waiting for a seat: which extra vehicle pays for itself?
-  const waiting = state.students.filter((s) => plan.waitlist[s.id] === 'seats-full' || plan.waitlist[s.id] === 'no-van')
+  const waiting = state.students.filter((s) => plan.waitlist[s.id] === 'seats-full' || plan.waitlist[s.id] === 'no-van' || plan.waitlist[s.id] === 'no-route')
   if (waiting.length > 0) {
     const centre = {
       lat: waiting.reduce((sum, s) => sum + s.home.lat, 0) / waiting.length,
@@ -138,7 +140,7 @@ export function* recommendationSteps(state: AppState, fleet: FleetEconomics): Ge
     if (room >= riders) {
       const result = priced(state, base, (s) => ({ ...s, vehicles: s.vehicles.map((x) => (x.id === vehicle.id ? { ...x, enabled: false } : x)) }))
       yield null
-      if (result.seatedDelta >= 0 && result.profitDelta > 1000) {
+      if (result.seatedDelta >= 0 && result.profitDelta > 1000 && keepsRidesFair(result.metrics)) {
         yield {
           id: `bench-${vehicle.id}`,
           title: `Bench ${vehicle.label}`,
@@ -160,7 +162,7 @@ export function* recommendationSteps(state: AppState, fleet: FleetEconomics): Ge
         vehicles: s.vehicles.map((x) => (x.id === vehicle.id ? { ...x, type: 'van', ...VEHICLE_PRESETS.van } : x)),
       }))
       yield null
-      if (result.seatedDelta >= 0 && result.profitDelta > 1000) {
+      if (result.seatedDelta >= 0 && result.profitDelta > 1000 && keepsRidesFair(result.metrics)) {
         yield {
           id: `swap-${vehicle.id}`,
           title: `Run ${vehicle.label} as a van`,

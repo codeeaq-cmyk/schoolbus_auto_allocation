@@ -1,115 +1,209 @@
-import { ArrowRight, Building2, CalendarClock, Hand, IndianRupee, MapPinned, Route, Sparkles, SplitSquareHorizontal, UsersRound, Van } from 'lucide-react'
-import { useMemo, type ReactNode } from 'react'
+import { ArrowRight, BadgeCheck, Building2, CalendarClock, Hand, IndianRupee, MapPinned, Route, Sparkles, UsersRound, Van } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
+import { useEffect, useMemo } from 'react'
+import { LiveVehicles } from '../components/map/layers'
 import { BaseMap } from '../components/map/BaseMap'
 import { NetworkLayers } from '../components/map/NetworkLayers'
+import { ButtonLink } from '../components/ui/Button'
+import { AnimatedNumber, Reveal, Stagger, StaggerItem } from '../components/ui/motion'
 import { compareWithManual } from '../lib/engine/baseline'
 import { inr, inrSigned, kmValue } from '../lib/format'
+import { EASE_OUT } from '../lib/motion'
 import { href } from '../lib/router'
+import { useSimControls } from '../sim/context'
 import { useStore } from '../store/context'
 
 const AUTOMATIC = [
-  { icon: <MapPinned />, title: 'Boarding points', body: 'Placed on real roads so every child is within walking distance, using the fewest stops.' },
+  { icon: <MapPinned />, title: 'Boarding points', body: 'Placed on real roads so every child is within walking distance, using the fewest stops.', wide: true },
   { icon: <Van />, title: 'Bus or van', body: 'Wide roads get buses. Lanes too narrow for a bus get a van, or a short walk to the main road.' },
-  { icon: <Route />, title: 'Allocation and routes', body: 'Which child rides what, and the driving order, chosen for the lowest running cost within your ride limit.' },
+  { icon: <Route />, title: 'Allocation and routes', body: 'Which child rides what, and the driving order, for the lowest running cost within your ride limit.' },
   { icon: <CalendarClock />, title: 'Pickup times', body: 'Worked back from the school bell for every stop, morning and evening.' },
   { icon: <IndianRupee />, title: 'Fees and profit', body: 'Fees by distance, costs per vehicle, and improvements priced before you commit to them.' },
-  { icon: <Hand />, title: 'Your call, always', body: 'Pin a child, move a stop, lock a route. The system plans around your change and keeps it.' },
+  { icon: <Hand />, title: 'Your call, always', body: 'Pin a child, move a stop, lock a route. The system plans around your change and keeps it.', wide: true },
+]
+
+const STEPS = [
+  { title: 'Set up your fleet', body: 'Enter each vehicle: bus or van, how many seats, and where it starts.' },
+  { title: 'Parents pin their homes', body: 'They see the boarding point, vehicle, pickup time and fee straight away.' },
+  { title: 'The plan runs itself', body: 'Routes stay efficient as families join. You overrule only what you want to.' },
 ]
 
 export function Landing() {
   const { state, view, fleet, routeStatus } = useStore()
+  const sim = useSimControls()
+  const reduced = useReducedMotion()
   const savings = useMemo(() => compareWithManual(state, fleet), [state, fleet])
+  const routes = [...view.routes.values()]
+  const { start, stop, setSpeed, finished } = sim
+
+  // The hero map plays the morning run on a loop, unless the visitor prefers less motion.
+  useEffect(() => {
+    if (reduced) return
+    setSpeed(2)
+    start()
+    return () => {
+      stop()
+      setSpeed(1)
+    }
+    // Starting once is enough; the loop below handles replays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduced])
+
+  useEffect(() => {
+    if (finished && !reduced) {
+      const timer = window.setTimeout(() => start(), 1500)
+      return () => window.clearTimeout(timer)
+    }
+  }, [finished, reduced, start])
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 pb-16 pt-8 sm:px-6 lg:pt-14">
-      <section className="grid items-center gap-10 lg:grid-cols-[1.05fr_1fr]">
-        <div className="animate-rise">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-primary-soft px-3 py-1 text-xs font-bold text-primary">
-            <Sparkles className="size-3.5" aria-hidden="true" />
-            New in the school app · Feature preview
-          </span>
-          <h1 className="mt-4 text-[34px] font-extrabold leading-[1.1] tracking-tight text-ink text-balance sm:text-5xl">
-            School transport that <span className="relative isolate whitespace-nowrap">plans itself<span className="absolute inset-x-0 bottom-1 -z-10 h-3 rounded bg-accent/70" aria-hidden="true" /></span>, and pays for itself.
-          </h1>
-          <p className="mt-4 max-w-xl text-lg text-ink-2">
-            Tell it where each vehicle starts and how many seats it has. Parents pin their homes. Boarding points, bus or van, routes, times and fees are all worked out, and you can overrule any of it.
-          </p>
+    <div className="relative overflow-x-clip">
+      {/* Soft color drifting behind the hero. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[780px]" aria-hidden="true">
+        <div className="animate-drift absolute -left-32 -top-24 size-[520px] rounded-full bg-[radial-gradient(circle,rgb(124_58_237/0.2),transparent_65%)]" />
+        <div className="animate-drift absolute -right-24 top-20 size-[560px] rounded-full bg-[radial-gradient(circle,rgb(251_191_36/0.22),transparent_65%)] [animation-delay:-6s]" />
+      </div>
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
-            <RoleCard to="/parent" icon={<UsersRound />} title="I'm a parent" body="Pin your home and see the boarding point, vehicle, pickup time and fee straight away." cta="Open parent app" />
-            <RoleCard to="/school" icon={<Building2 />} title="I'm the school" body="See the live plan, profit per vehicle, and what to change next." cta="Open school admin" />
-          </div>
-
-          <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
-            {[
-              ['Children seated', `${fleet.seated}`],
-              ['Boarding points', `${fleet.stops}`],
-              ['Profit a month', inr(fleet.profit)],
-              ['Less driving', `${kmValue(Math.max(0, savings.kmDaily))}/day`],
-            ].map(([label, value]) => (
-              <div key={label} className="border-l-2 border-line-strong pl-3">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-3">{label}</dt>
-                <dd className="text-2xl font-extrabold text-ink">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        <div className="relative h-[340px] overflow-hidden rounded-3xl border border-line shadow-float sm:h-[480px] animate-fade-in">
-          <BaseMap center={state.settings.location} zoom={12} label={`Map of all routes in Thiruvananthapuram for ${state.settings.name}`} interactive={false}>
-            <NetworkLayers state={state} view={view} routeStatus={routeStatus} showHomes />
-          </BaseMap>
-          <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-xl bg-surface/95 px-3 py-2 text-xs font-semibold text-ink-2 shadow-card">
-            {state.settings.name}, {state.settings.address} · live demo data
-          </div>
-        </div>
-      </section>
-
-      <section aria-labelledby="auto-heading" className="mt-16">
-        <h2 id="auto-heading" className="text-xl font-extrabold text-ink">
-          What runs on autopilot
-        </h2>
-        <p className="mt-1 max-w-2xl text-[15px] text-ink-2">
-          Against a plan made by hand with the same fleet and children, this one changes monthly profit by {inrSigned(savings.profit)}. That comparison is a model, and the costs are sample figures you can replace.
-        </p>
-        <ul className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {AUTOMATIC.map((item) => (
-            <li key={item.title} className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-              <span className="grid size-10 place-items-center rounded-xl bg-accent-soft text-ink [&>svg]:size-5" aria-hidden="true">
-                {item.icon}
+      <div className="mx-auto w-full max-w-[1280px] px-4 pb-20 pt-8 sm:px-6 lg:pt-14">
+        <section className="grid items-center gap-10 lg:grid-cols-[1fr_1.05fr]">
+          <Stagger>
+            <StaggerItem>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-xs font-bold text-primary">
+                <Sparkles className="size-3.5" aria-hidden="true" />
+                Ceeq Smart Transport · A school management feature
               </span>
-              <h3 className="mt-3 font-bold text-ink">{item.title}</h3>
-              <p className="mt-1 text-sm text-ink-2">{item.body}</p>
-            </li>
-          ))}
-        </ul>
+            </StaggerItem>
+            <StaggerItem>
+              <h1 className="mt-5 text-[38px] font-extrabold leading-[1.06] tracking-tight text-ink text-balance sm:text-[56px]">
+                School transport that <span className="text-gradient">plans itself</span>, and pays for itself.
+              </h1>
+            </StaggerItem>
+            <StaggerItem>
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-ink-2">
+                Tell it where each vehicle starts and how many seats it has. Parents pin their homes. Boarding points, bus or van, routes, times and fees are all worked out, and you can overrule any of it.
+              </p>
+            </StaggerItem>
+            <StaggerItem>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <ButtonLink href={href('/school')} size="lg">
+                  <Building2 className="size-5" aria-hidden="true" />
+                  Open school admin
+                </ButtonLink>
+                <ButtonLink href={href('/parent')} size="lg" variant="secondary">
+                  <UsersRound className="size-5" aria-hidden="true" />
+                  Open parent app
+                </ButtonLink>
+              </div>
+            </StaggerItem>
+            <StaggerItem>
+              <dl className="mt-9 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+                {[
+                  { label: 'Children seated', value: fleet.seated, format: (n: number) => String(Math.round(n)) },
+                  { label: 'Boarding points', value: fleet.stops, format: (n: number) => String(Math.round(n)) },
+                  { label: 'Profit a month', value: fleet.profit, format: inr },
+                  { label: 'Less driving', value: Math.max(0, savings.kmDaily), format: (n: number) => `${Math.round(n)} km` },
+                ].map((stat) => (
+                  <div key={stat.label}>
+                    <dt className="text-xs font-medium text-ink-3">{stat.label}</dt>
+                    <dd className="mt-0.5 text-[26px] font-extrabold leading-tight tracking-tight text-ink">
+                      <AnimatedNumber value={stat.value} from={0} format={stat.format} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </StaggerItem>
+          </Stagger>
 
-        <p className="mt-6 flex items-start gap-2.5 rounded-2xl border border-dashed border-line-strong bg-primary-soft/60 p-4 text-sm text-ink-2">
-          <SplitSquareHorizontal className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-          <span>
-            <strong className="text-ink">Try both sides at once:</strong> open the parent app and school admin in two browser tabs. A request from a parent lands in the school's plan straight away, and fleet changes reach the parent right after.
-          </span>
-        </p>
-      </section>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.7, ease: EASE_OUT, delay: 0.1 }} className="relative">
+            <div className="h-[360px] overflow-hidden rounded-[2rem] sm:h-[540px]">
+              <div className="size-full">
+                <BaseMap center={state.settings.location} zoom={12} label={`Map of all routes in Thiruvananthapuram for ${state.settings.name}`} interactive={false}>
+                  <NetworkLayers state={state} view={view} routeStatus={routeStatus} showHomes />
+                  <LiveVehicles routes={routes} settings={state.settings} />
+                </BaseMap>
+              </div>
+            </div>
+
+            <div className="absolute -left-2 top-6 z-10 bg-surface flex items-center gap-3 rounded-2xl p-3 sm:-left-6">
+              <span className="grid size-9 place-items-center rounded-xl bg-success-soft text-success-ink" aria-hidden="true">
+                <BadgeCheck className="size-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-bold text-ink">Seat confirmed</span>
+                <span className="block text-xs text-ink-3">Pickup worked out in a moment</span>
+              </span>
+            </div>
+            <div className="absolute -right-2 bottom-6 z-10 rounded-2xl bg-night p-3.5 text-white sm:-right-6">
+              <p className="text-xs font-medium text-night-ink">Against planning by hand</p>
+              <p className="text-xl font-extrabold tracking-tight text-white">{inrSigned(savings.profit)}/mo</p>
+            </div>
+          </motion.div>
+        </section>
+
+        <section aria-labelledby="auto-heading" className="mt-24">
+          <Reveal>
+            <h2 id="auto-heading" className="text-3xl font-extrabold tracking-tight text-ink sm:text-[38px]">
+              Everything that used to take a week of phone calls
+            </h2>
+            <p className="mt-2 max-w-2xl text-[17px] leading-relaxed text-ink-2">All of it runs on autopilot. Every decision comes with a reason, and every one can be overruled.</p>
+          </Reveal>
+          <Stagger inView as="ul" className="mt-8 grid gap-4 md:grid-cols-3">
+            {AUTOMATIC.map((item) => (
+              <StaggerItem as="li" key={item.title} className={item.wide ? 'md:col-span-2 md:last:col-span-3' : ''}>
+                <div className="group h-full rounded-3xl bg-surface p-6">
+                  <span className="gradient-primary grid size-11 place-items-center rounded-2xl text-white transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110 [&>svg]:size-5" aria-hidden="true">
+                    {item.icon}
+                  </span>
+                  <h3 className="mt-4 text-lg font-bold text-ink">{item.title}</h3>
+                  <p className="mt-1 leading-relaxed text-ink-2">{item.body}</p>
+                </div>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        </section>
+
+        <section aria-labelledby="how-heading" className="mt-24">
+          <Reveal>
+            <h2 id="how-heading" className="text-3xl font-extrabold tracking-tight text-ink sm:text-[38px]">
+              Three steps, then it runs
+            </h2>
+          </Reveal>
+          <Stagger inView as="ol" className="mt-8 grid gap-6 md:grid-cols-3">
+            {STEPS.map((step, i) => (
+              <StaggerItem as="li" key={step.title} className="relative">
+                {i < STEPS.length - 1 && <span className="absolute left-14 top-5 hidden h-0.5 w-[calc(100%-2.5rem)] bg-[linear-gradient(90deg,var(--color-line-strong)_50%,transparent_50%)] bg-[length:10px_2px] md:block" aria-hidden="true" />}
+                <span className="gradient-amber relative grid size-10 place-items-center rounded-full text-sm font-extrabold text-on-accent">{i + 1}</span>
+                <h3 className="mt-4 text-lg font-bold text-ink">{step.title}</h3>
+                <p className="mt-1 leading-relaxed text-ink-2">{step.body}</p>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        </section>
+
+        <Reveal className="mt-24">
+          <section className="gradient-night relative overflow-hidden rounded-[2rem] p-8 text-white sm:p-12">
+            <div className="max-w-2xl">
+              <h2 className="text-3xl font-extrabold tracking-tight sm:text-[38px]">See both sides of it</h2>
+              <p className="mt-3 text-[17px] leading-relaxed text-night-ink">
+                Open the parent app and the school admin in two tabs. A request from a parent lands in the school's plan straight away.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <ButtonLink href={href('/parent')} size="lg" variant="accent">
+                  Try it as a parent
+                  <ArrowRight className="size-5" aria-hidden="true" />
+                </ButtonLink>
+                <ButtonLink href={href('/school')} size="lg" variant="night">
+                  Try it as the school
+                </ButtonLink>
+              </div>
+              <p className="mt-6 text-xs leading-relaxed text-night-ink">
+                A demo with a fictional school. Costs and fees are sample figures. {kmValue(Math.max(0, savings.kmDaily))} a day and {inrSigned(savings.profit)} a month are against a modelled hand-made plan, not a measured one.
+              </p>
+            </div>
+          </section>
+        </Reveal>
+      </div>
     </div>
   )
 }
 
-function RoleCard({ to, icon, title, body, cta }: { to: string; icon: ReactNode; title: string; body: string; cta: string }) {
-  return (
-    <a
-      href={href(to)}
-      className="group flex flex-col rounded-2xl border border-line bg-surface p-5 shadow-card transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-float"
-    >
-      <span className="grid size-10 place-items-center rounded-xl bg-primary text-on-primary [&>svg]:size-5" aria-hidden="true">
-        {icon}
-      </span>
-      <span className="mt-3 text-base font-bold text-ink">{title}</span>
-      <span className="mt-1 flex-1 text-sm text-ink-2">{body}</span>
-      <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
-        {cta}
-        <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
-      </span>
-    </a>
-  )
-}

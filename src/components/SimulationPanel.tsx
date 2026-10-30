@@ -1,5 +1,7 @@
 import { Pause, Play, RotateCcw, X } from 'lucide-react'
+import { motion } from 'motion/react'
 import { cn } from '../lib/cn'
+import { spring } from '../lib/motion'
 import { formatClock } from '../lib/time'
 import { SPEED_OPTIONS, useSimClock, useSimControls } from '../sim/context'
 import { Button } from './ui/Button'
@@ -11,14 +13,14 @@ export function SimulationPanel({ className, label = 'Simulate morning run', sta
   if (!sim.active) {
     return (
       <Button variant="accent" onClick={() => sim.start(startAt)} className={className}>
-        <Play className="size-4" aria-hidden="true" />
+        <Play className="size-4 fill-current" aria-hidden="true" />
         {label}
       </Button>
     )
   }
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-1 rounded-xl border border-line bg-surface p-1 shadow-card', className)}>
+    <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={spring} className={cn('glass-strong inline-flex flex-wrap items-center gap-1 rounded-2xl p-1 text-ink', className)}>
       <ClockReadout running={sim.running} />
       {sim.finished ? (
         <Button size="sm" variant="ghost" onClick={() => sim.start(startAt)}>
@@ -30,17 +32,14 @@ export function SimulationPanel({ className, label = 'Simulate morning run', sta
           {sim.running ? <Pause className="size-4" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
         </Button>
       )}
-      <div className="flex items-center rounded-lg bg-muted p-0.5" role="group" aria-label="Simulation speed">
+      <div className="flex items-center rounded-xl bg-muted p-0.5" role="group" aria-label="Simulation speed">
         {SPEED_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             type="button"
             aria-pressed={sim.speed === opt.value}
             onClick={() => sim.setSpeed(opt.value)}
-            className={cn(
-              'h-8 cursor-pointer rounded-md px-2 text-xs font-bold transition-colors tabular',
-              sim.speed === opt.value ? 'bg-surface text-ink shadow-xs' : 'text-ink-3 hover:text-ink',
-            )}
+            className={cn('h-8 cursor-pointer rounded-lg px-2 text-xs font-bold transition-colors tabular', sim.speed === opt.value ? 'bg-surface text-ink' : 'text-ink-3 hover:text-ink')}
           >
             {opt.label}
           </button>
@@ -49,7 +48,7 @@ export function SimulationPanel({ className, label = 'Simulate morning run', sta
       <Button size="icon" variant="ghost" onClick={sim.stop} aria-label="End simulation">
         <X className="size-4" aria-hidden="true" />
       </Button>
-    </div>
+    </motion.div>
   )
 }
 
@@ -58,7 +57,7 @@ function ClockReadout({ running }: { running: boolean }) {
   if (clock === null) return null
   return (
     <span className="flex items-center gap-2 px-2.5 text-sm font-bold text-ink tabular" aria-label={`Simulated time ${formatClock(clock)}`}>
-      <span className={cn('size-2 rounded-full', running ? 'bg-success animate-pulse' : 'bg-ink-3')} aria-hidden="true" />
+      <span className={cn('size-2 rounded-full', running ? 'animate-pulse bg-success' : 'bg-ink-3')} aria-hidden="true" />
       {formatClock(clock)}
     </span>
   )

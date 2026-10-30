@@ -53,12 +53,12 @@ function AutoResize() {
 }
 
 /** Fits the view to `points` whenever `fitKey` changes (not on every point update). */
-export function FitBounds({ points, fitKey, padding = 48, maxZoom = 16 }: { points: LatLng[]; fitKey: string; padding?: number; maxZoom?: number }) {
+export function FitBounds({ points, fitKey, padding = 48, paddingLeft, maxZoom = 16 }: { points: LatLng[]; fitKey: string; padding?: number; paddingLeft?: number; maxZoom?: number }) {
   const map = useMap()
   useEffect(() => {
     if (points.length === 0) return
     if (points.length === 1) map.setView(points[0], Math.min(maxZoom, 16))
-    else map.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng])), { padding: [padding, padding], maxZoom })
+    else map.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng])), { paddingTopLeft: [paddingLeft ?? padding, padding], paddingBottomRight: [padding, padding], maxZoom })
     // Points are read at the moment the key changes; later point updates must not re-fit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, fitKey])

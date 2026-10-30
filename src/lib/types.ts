@@ -93,6 +93,8 @@ export type WaitReason =
   | 'too-far'
   /** They need a van and the fleet has none free. */
   | 'no-van'
+  /** Vehicles have seats, but none passes close enough to be worth the detour. */
+  | 'no-route'
 
 export interface Plan {
   stops: BoardingPoint[]
@@ -132,6 +134,8 @@ export interface Settings {
   maxRideMin: number
   /** Most children at one boarding point. */
   maxStopRiders: number
+  /** Longest extra driving a vehicle will take on for one new child. */
+  maxDetourMin: number
   /** School start time, "HH:MM" 24h. */
   startTime: string
   /** School end time, "HH:MM" 24h. */

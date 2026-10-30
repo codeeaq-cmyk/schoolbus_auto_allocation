@@ -1,6 +1,8 @@
-import { Building2, Bus, RotateCcw, UsersRound } from 'lucide-react'
+import { Building2, RotateCcw, UsersRound } from 'lucide-react'
+import { motion } from 'motion/react'
 import { useState } from 'react'
 import { cn } from '../lib/cn'
+import { spring } from '../lib/motion'
 import { href, navigate } from '../lib/router'
 import { useSimControls } from '../sim/context'
 import { useStore } from '../store/context'
@@ -15,7 +17,7 @@ const roles = [
 ] as const
 
 export function AppHeader({ area }: { area: string | undefined }) {
-  const { state, update } = useStore()
+  const { update } = useStore()
   const sim = useSimControls()
   const toast = useToast()
   const [confirmReset, setConfirmReset] = useState(false)
@@ -28,20 +30,17 @@ export function AppHeader({ area }: { area: string | undefined }) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/90 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
-      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 sm:px-6">
-        <a href={href('/')} className="flex min-w-0 items-center gap-2.5 rounded-xl focus-visible:outline-offset-4" aria-label="Smart Transport home">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-on-accent shadow-sm" aria-hidden="true">
-            <Bus className="size-5" strokeWidth={2.4} />
-          </span>
+    <header className="on-dark sticky top-0 z-40 bg-night text-white">
+      <div className="flex h-16 items-center gap-3 px-4 sm:px-5">
+        <a href={href('/')} className="flex min-w-0 items-center gap-2.5 rounded-xl focus-visible:outline-offset-4" aria-label="Ceeq Smart Transport home">
+          <img src="/ceeq-logo.png" alt="" width={40} height={40} className="size-10 shrink-0" />
           <span className="hidden min-w-0 flex-col leading-tight sm:flex">
-            <span className="truncate text-[15px] font-extrabold text-ink">Smart Transport</span>
-            <span className="truncate text-xs font-medium text-ink-3">{state.settings.name}</span>
+            <span className="truncate text-[15px] font-extrabold text-white">Ceeq Smart Transport</span>
+            <span className="truncate text-xs font-medium text-night-ink">School management feature</span>
           </span>
         </a>
-        <span className="hidden rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-bold text-primary lg:inline">Feature preview</span>
 
-        <nav aria-label="Switch view" className="ml-auto flex items-center rounded-xl bg-muted p-1">
+        <nav aria-label="Switch view" className="ml-auto flex items-center rounded-2xl bg-white/10 p-1">
           {roles.map(({ area: target, label, short, icon: Icon }) => {
             const current = area === target
             return (
@@ -49,20 +48,18 @@ export function AppHeader({ area }: { area: string | undefined }) {
                 key={target}
                 href={href(`/${target}`)}
                 aria-current={current ? 'page' : undefined}
-                className={cn(
-                  'flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors',
-                  current ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink',
-                )}
+                className={cn('relative flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors', current ? 'text-white' : 'text-night-ink hover:text-white')}
               >
-                <Icon className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sm:hidden">{short}</span>
+                {current && <motion.span layoutId="role-pill" className="gradient-primary absolute inset-0 rounded-xl" transition={spring} />}
+                <Icon className="relative size-4" aria-hidden="true" />
+                <span className="relative hidden sm:inline">{label}</span>
+                <span className="relative sm:hidden">{short}</span>
               </a>
             )
           })}
         </nav>
 
-        <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)} className="px-2.5 sm:px-3" aria-label="Reset demo data">
+        <Button variant="night" size="sm" onClick={() => setConfirmReset(true)} className="px-2.5 sm:px-3" aria-label="Reset demo data">
           <RotateCcw className="size-4" aria-hidden="true" />
           <span className="hidden md:inline">Reset demo</span>
         </Button>

@@ -30,7 +30,7 @@ async function overpass(file, query) {
   const res = await fetch(OVERPASS, {
     method: 'POST',
     body: 'data=' + encodeURIComponent(query),
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'smart-transport-demo/1.0' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ceeq-smart-transport/1.0' },
   })
   if (!res.ok) throw new Error(`Overpass ${res.status}`)
   const text = await res.text()
@@ -274,8 +274,8 @@ const fleetDefs = [
   { label: 'Bus 01', type: 'bus', seats: 40, plate: 'KL 01 BX 4521', driverName: 'Rajan P', driverPhone: '+91 94470 11201', start: ['Kazhakkoottam', 8.5686, 76.8733] },
   { label: 'Bus 02', type: 'bus', seats: 40, plate: 'KL 01 BX 4522', driverName: 'Shaji K', driverPhone: '+91 94470 11202', start: ['Vattiyoorkavu', 8.5265, 76.9845] },
   { label: 'Bus 03', type: 'bus', seats: 40, plate: 'KL 01 BX 4523', driverName: 'Sudheer M', driverPhone: '+91 94470 11203', start: ['Mannanthala', 8.5635, 76.9505] },
-  { label: 'Van 01', type: 'van', seats: 14, plate: 'KL 01 CF 7711', driverName: 'Ajith V', driverPhone: '+91 94470 11204', start: ['Sreekaryam', 8.5486, 76.9175] },
-  { label: 'Van 02', type: 'van', seats: 14, plate: 'KL 01 CF 7712', driverName: 'Binu S', driverPhone: '+91 94470 11205', start: ['Pettah', 8.4985, 76.9305] },
+  { label: 'Van 01', type: 'van', seats: 14, plate: 'KL 01 CF 7711', driverName: 'Ajith V', driverPhone: '+91 94470 11204', start: ['Pettah', 8.4985, 76.9305] },
+  { label: 'Van 02', type: 'van', seats: 14, plate: 'KL 01 CF 7712', driverName: 'Binu S', driverPhone: '+91 94470 11205', start: ['Peroorkada', 8.5435, 76.9665] },
 ]
 
 // ---------- Plan, using the same engine as the app ----------
@@ -297,6 +297,7 @@ const settings = {
   maxWalkMeters: 300,
   maxRideMin: 70,
   maxStopRiders: 12,
+  maxDetourMin: 6,
   startTime: '08:45',
   endTime: '15:30',
   arrivalBufferMin: 10,
@@ -335,7 +336,7 @@ const vehicles = fleetDefs.map((def, i) => {
 
 const now = Date.now()
 const state = {
-  version: 2,
+  version: 3,
   settings,
   vehicles,
   students: students.map(({ registeredMinutesAgo, ...s }) => ({ ...s, registeredAt: now - registeredMinutesAgo * 60000 })),
@@ -373,7 +374,7 @@ for (let i = 0; i < points.length; i++) {
 console.log(`Road/straight ratio: ${(ratioSum / ratioCount).toFixed(2)} over ${ratioCount} pairs`)
 
 const t0 = performance.now()
-state.plan = optimise(state, { recluster: true, iterations: 2500, stability: false })
+state.plan = optimise(state, { recluster: true, iterations: Number(process.env.SEED_ITERATIONS ?? 20000), stability: false })
 console.log(`Optimised in ${Math.round(performance.now() - t0)} ms`)
 
 const stopsById = new Map(state.plan.stops.map((s) => [s.id, s]))

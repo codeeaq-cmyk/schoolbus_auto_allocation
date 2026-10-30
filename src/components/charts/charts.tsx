@@ -26,16 +26,16 @@ function Tooltip({ tip }: { tip: TipState | null }) {
   if (!tip) return null
   const left = typeof window !== 'undefined' ? Math.min(tip.x + 14, window.innerWidth - 240) : tip.x
   return (
-    <div className="pointer-events-none fixed z-[70] w-56 rounded-xl border border-line bg-surface p-3 text-xs shadow-float" style={{ left: Math.max(8, left), top: Math.max(8, tip.y - 12) }} role="status">
-      <p className="mb-1.5 font-bold text-ink">{tip.title}</p>
+    <div className="pointer-events-none fixed z-[70] w-56 rounded-2xl bg-night p-3 text-xs text-white" style={{ left: Math.max(8, left), top: Math.max(8, tip.y - 12) }} role="status">
+      <p className="mb-1.5 font-bold text-white">{tip.title}</p>
       <ul className="flex flex-col gap-1">
         {tip.rows.map((row) => (
           <li key={row.label} className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-1.5 text-ink-3">
+            <span className="flex items-center gap-1.5 text-night-ink">
               {row.color && <span className="h-0.5 w-3 rounded-full" style={{ background: row.color }} aria-hidden="true" />}
               {row.label}
             </span>
-            <span className="font-bold text-ink tabular">{row.value}</span>
+            <span className="font-bold text-white tabular">{row.value}</span>
           </li>
         ))}
       </ul>
@@ -48,10 +48,10 @@ export function ChartCard({ title, description, chart, table, legend, className 
   const [mode, setMode] = useState<'chart' | 'table'>('chart')
   const id = useId()
   return (
-    <section aria-labelledby={id} className={cn('rounded-2xl border border-line bg-surface p-5 shadow-card', className)}>
+    <section aria-labelledby={id} className={cn('rounded-3xl bg-surface p-5', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 id={id} className="text-[15px] font-bold text-ink">
+          <h2 id={id} className="text-base font-bold text-ink">
             {title}
           </h2>
           {description && <p className="mt-0.5 text-sm text-ink-3">{description}</p>}
@@ -64,7 +64,7 @@ export function ChartCard({ title, description, chart, table, legend, className 
               aria-pressed={mode === m}
               aria-label={m === 'chart' ? 'Show chart' : 'Show table'}
               onClick={() => setMode(m)}
-              className={cn('grid size-8 cursor-pointer place-items-center rounded-md transition-colors', mode === m ? 'bg-surface text-ink shadow-xs' : 'text-ink-3 hover:text-ink')}
+              className={cn('grid size-8 cursor-pointer place-items-center rounded-md transition-colors', mode === m ? 'bg-surface text-ink' : 'text-ink-3 hover:text-ink')}
             >
               {m === 'chart' ? <BarChart3 className="size-4" aria-hidden="true" /> : <Table2 className="size-4" aria-hidden="true" />}
             </button>
@@ -160,12 +160,13 @@ export function DivergingBars({ data }: { data: DivergingDatum[] }) {
               >
                 <span className="absolute inset-y-0 w-px bg-ink-3/50" style={{ left: `${leftShare}%` }} aria-hidden="true" />
                 <span
-                  className="absolute inset-y-0.5 transition-[width,left] duration-300 hover:opacity-85"
+                  className="absolute inset-y-0.5 animate-grow-x transition-[width,left] duration-300 hover:opacity-85"
                   style={{
                     background: d.value >= 0 ? POSITIVE : NEGATIVE,
                     width: `${Math.max(share, 0.6)}%`,
                     left: d.value >= 0 ? `${leftShare}%` : `${leftShare - share}%`,
                     borderRadius: d.value >= 0 ? '0 4px 4px 0' : '4px 0 0 4px',
+                    transformOrigin: d.value >= 0 ? 'left' : 'right',
                   }}
                 />
               </div>
@@ -202,7 +203,7 @@ export function StackedBars({ rows }: { rows: { label: string; segments: StackSe
             <li key={row.label} className="grid grid-cols-[72px_1fr_60px] items-center gap-2">
               <span className="truncate text-sm font-semibold text-ink">{row.label}</span>
               <div
-                className="flex h-5 cursor-default gap-0.5"
+                className="flex h-5 origin-left animate-grow-x cursor-default gap-0.5"
                 tabIndex={0}
                 role="img"
                 aria-label={`${row.label}: ${row.segments.map((s) => `${s.label} ${inr(s.value)}`).join(', ')}`}
@@ -265,7 +266,7 @@ export function Histogram({ bins, unit, limit, limitLabel }: { bins: { from: num
                 onFocus={(e) => showFocus(e, content)}
                 onBlur={hide}
               >
-                <div className="w-full rounded-t transition-[height] duration-300 hover:opacity-85" style={{ height: `${(bin.count / max) * 100}%`, minHeight: bin.count > 0 ? 3 : 0, background: POSITIVE }} />
+                <div className="w-full origin-bottom animate-grow-y rounded-t transition-[height] duration-300 hover:opacity-85" style={{ height: `${(bin.count / max) * 100}%`, minHeight: bin.count > 0 ? 3 : 0, background: POSITIVE }} />
               </div>
             )
           })}

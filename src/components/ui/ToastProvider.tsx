@@ -1,12 +1,13 @@
 import { CircleCheck, Info, TriangleAlert, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useRef, useState, type ReactNode } from 'react'
-import { cn } from '../../lib/cn'
+import { spring } from '../../lib/motion'
 import { ToastContext, type Toast } from './toast-context'
 
 const icons = {
-  success: <CircleCheck className="size-5 text-success" aria-hidden="true" />,
-  info: <Info className="size-5 text-primary" aria-hidden="true" />,
-  warning: <TriangleAlert className="size-5 text-warning-ink" aria-hidden="true" />,
+  success: <CircleCheck className="size-5 text-success-bright" aria-hidden="true" />,
+  info: <Info className="size-5 text-accent" aria-hidden="true" />,
+  warning: <TriangleAlert className="size-5 text-warning" aria-hidden="true" />,
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -28,32 +29,32 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={push}>
       {children}
       <div
-        className="pointer-events-none fixed inset-x-4 bottom-4 z-[60] flex flex-col items-center gap-2 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:items-end"
+        className="pointer-events-none fixed inset-x-4 bottom-24 z-[60] flex flex-col items-center gap-2 sm:inset-x-auto sm:right-6 sm:items-end lg:bottom-6"
         role="status"
         aria-live="polite"
       >
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={cn(
-              'pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border border-line bg-surface p-4 shadow-float animate-rise',
-            )}
-          >
-            {icons[t.tone]}
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-ink">{t.title}</p>
-              {t.description && <p className="mt-0.5 text-sm text-ink-2">{t.description}</p>}
-            </div>
-            <button
-              type="button"
-              onClick={() => dismiss(t.id)}
-              className="-m-1 grid size-8 cursor-pointer place-items-center rounded-lg text-ink-3 hover:bg-muted hover:text-ink"
-              aria-label="Dismiss notification"
+        <AnimatePresence initial={false}>
+          {toasts.map((t) => (
+            <motion.div
+              key={t.id}
+              layout
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, x: 24, transition: { duration: 0.14 } }}
+              transition={spring}
+              className="on-dark pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl bg-night p-4 text-white"
             >
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          </div>
-        ))}
+              {icons[t.tone]}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-white">{t.title}</p>
+                {t.description && <p className="mt-0.5 text-sm text-night-ink">{t.description}</p>}
+              </div>
+              <button type="button" onClick={() => dismiss(t.id)} className="-m-1 grid size-8 cursor-pointer place-items-center rounded-lg text-night-ink hover:bg-white/10 hover:text-white" aria-label="Dismiss notification">
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   )

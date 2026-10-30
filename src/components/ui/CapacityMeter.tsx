@@ -25,14 +25,14 @@ export function CapacityBadge({ used, capacity }: { used: number; capacity: numb
     )
   return (
     <Badge tone="success" icon={<CircleCheck />}>
-      {capacity - used} seats free
+      {capacity - used} free
     </Badge>
   )
 }
 
-/** Seats taken vs capacity. Fill carries the bus identity; state is spelled out in the badge. */
+/** Seats taken vs capacity. Fill carries the vehicle identity; state is spelled out in the badge. */
 export function CapacityMeter({ used, capacity, colorSlot, className }: { used: number; capacity: number; colorSlot: number; className?: string }) {
-  const pct = capacity > 0 ? Math.min(100, (used / capacity) * 100) : 0
+  const fraction = capacity > 0 ? Math.min(1, used / capacity) : 0
   return (
     <div
       role="meter"
@@ -42,9 +42,10 @@ export function CapacityMeter({ used, capacity, colorSlot, className }: { used: 
       aria-valuetext={`${used} of ${capacity} seats taken`}
       className={cn('h-2 w-full overflow-hidden rounded-full bg-muted', className)}
     >
+      {/* Scaling rather than resizing keeps it smooth; the inner span fixes the bar's rounded end. */}
       <div
-        className="h-full rounded-full transition-[width] duration-300 ease-out"
-        style={{ width: `${pct}%`, background: routeColor(colorSlot) }}
+        className="h-full origin-left rounded-full transition-transform duration-500 ease-out"
+        style={{ transform: `scaleX(${fraction})`, background: routeColor(colorSlot) }}
       />
     </div>
   )

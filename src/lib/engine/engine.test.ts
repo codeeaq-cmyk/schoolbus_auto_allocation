@@ -18,11 +18,12 @@ import {
   updateSettings,
   updateVehicle,
 } from '../../store/actions'
+import { travelMeters } from '../distance'
 import { haversine } from '../geo'
 import type { AppState, Student } from '../types'
 import { compareWithManual } from './baseline'
 import { breakEvenDiesel, fleetEconomics } from './economics'
-import { canReach, countMoved, optimise, placeStudent, seatCounts } from './plan'
+import { canReach, countMoved, metersPerMinute, optimise, placeStudent, seatCounts } from './plan'
 import { VEHICLE_PRESETS } from './presets'
 import { buildPlanView, feeForKm, liveVehicle } from './view'
 
@@ -150,6 +151,83 @@ describe('new requests', () => {
     const after = removeStudent(second, 'a')
     expect(after.plan.seats.b).toBeDefined()
     expectValidPlan(after)
+  })
+})
+
+describe('long runs', () => {
+  /** Road metres a vehicle's whole route covers. */
+  const routeMeters = (state: AppState, plan: AppState['plan'], vehicleId: string) => {
+    const stops = new Map(plan.stops.map((s) => [s.id, s]))
+    const route = plan.routes.find((r) => r.vehicleId === vehicleId)
+    if (!route || route.stopIds.length === 0) return 0
+    const vehicle = state.vehicles.find((v) => v.id === vehicleId)!
+    const points = [vehicle.start.position, ...route.stopIds.map((id) => stops.get(id)!.position), state.settings.location]
+    return points.slice(1).reduce((sum, p, i) => sum + travelMeters(points[i], p), 0)
+  }
+
+  /** The screenshot case and its neighbours: homes around Poojappura, far from Van 01's route. */
+  const poojappura = [
+    { lat: 8.4771, lng: 76.9792 },
+    { lat: 8.4825, lng: 76.9787 },
+    { lat: 8.4762, lng: 76.9671 },
+    { lat: 8.483, lng: 76.976 },
+  ]
+
+  it('never sends a vehicle across town for one child', () => {
+    const state = seed()
+    for (const home of poojappura) {
+      const next = addStudent(state, newChild({ home }))
+      expectValidPlan(next)
+      for (const vehicle of state.vehicles) {
+        const added = routeMeters(next, next.plan, vehicle.id) - routeMeters(state, state.plan, vehicle.id)
+        const limit = state.settings.maxDetourMin * metersPerMinute(vehicle, state.settings)
+        expect(added, `${vehicle.label} detour for ${home.lat},${home.lng}`).toBeLessThanOrEqual(limit + 1)
+      }
+    }
+  })
+
+  it('frees a seat on a full vehicle by moving a rider who has another option', () => {
+    const state = seed()
+    // Somewhere on the network, a new child must get a seat because someone else moved.
+    const offsets = [[0.0012, 0.0012], [-0.0012, 0.0012], [0.0012, -0.0012], [-0.0012, -0.0012], [0.002, 0], [-0.002, 0], [0, 0.002], [0, -0.002]]
+    let swapped = false
+    for (const stop of state.plan.stops) {
+      for (const [dLat, dLng] of offsets) {
+        const next = addStudent(state, newChild({ home: { lat: stop.position.lat + dLat, lng: stop.position.lng + dLng } }))
+        expectValidPlan(next)
+        if (next.plan.seats['test-child'] && countMoved(state.plan, next.plan) > 0) swapped = true
+      }
+      if (swapped) break
+    }
+    expect(swapped).toBe(true)
+  })
+
+  it('seats the very first request of a new school', () => {
+    const base = seed()
+    const van = base.vehicles.find((v) => v.type === 'van')!
+    const empty: AppState = { ...base, students: [], vehicles: [van], paths: {}, plan: { stops: [], routes: [{ vehicleId: van.id, stopIds: [], locked: false }], seats: {}, waitlist: {}, blocked: [], optimisedAt: 0 } }
+    const next = addStudent(empty, newChild())
+    expect(next.plan.seats['test-child']?.vehicleId).toBe(van.id)
+    expectValidPlan(next)
+  })
+
+  it('tells the family why when no vehicle passes nearby', () => {
+    const state = seed()
+    // Somewhere inside the road data but nowhere near a route.
+    const next = addStudent(state, newChild({ home: { lat: 8.44, lng: 76.9 } }))
+    const reason = next.plan.waitlist['test-child']
+    if (reason) expect(['no-route', 'no-road', 'too-far', 'no-van', 'seats-full']).toContain(reason)
+    expectValidPlan(next)
+  })
+
+  it('lets the school send a vehicle anyway by pinning', () => {
+    const base = seed()
+    const van = base.vehicles.find((v) => v.type === 'van')!
+    // Make sure it has a seat, then send it somewhere the planner wouldn't choose by itself.
+    const state = { ...base, vehicles: base.vehicles.map((v) => (v.id === van.id ? { ...v, seats: v.seats + 5 } : v)) }
+    const next = addStudent(state, newChild({ home: poojappura[0], pinnedVehicleId: van.id }))
+    expect(next.plan.seats['test-child']?.vehicleId).toBe(van.id)
+    expectValidPlan(next)
   })
 })
 

@@ -16,6 +16,8 @@ export function waitReasonText(reason: WaitReason, settings: Settings): string {
       return 'Every vehicle that can reach this area is full. The child is seated automatically when a seat opens.'
     case 'no-van':
       return 'This lane is too narrow for a bus and no van has a free seat. The child is seated automatically when one does.'
+    case 'no-route':
+      return `Vehicles have seats, but none passes close enough. Sending one here would add more than ${settings.maxDetourMin} minutes for the children already on board. The school can see this, and the child is seated automatically once a route comes nearby.`
     case 'no-road':
       return `No road a vehicle can use is within ${formatDistance(settings.maxWalkMeters)} on foot. The school can add a boarding point by hand.`
     case 'too-far':

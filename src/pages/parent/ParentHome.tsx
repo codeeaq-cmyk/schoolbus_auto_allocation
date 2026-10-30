@@ -1,12 +1,13 @@
-import { ArrowRight, Bus, Info, Plus } from 'lucide-react'
+import { ArrowRight, Hourglass, MapPinned, Plus, Sparkles, Ticket } from 'lucide-react'
 import { ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
-import { EmptyState, Initials, PageHeader } from '../../components/ui/misc'
+import { EmptyState, PageHeader } from '../../components/ui/misc'
+import { Stagger, StaggerItem } from '../../components/ui/motion'
 import { formatDistance } from '../../lib/geo'
 import { href } from '../../lib/router'
 import { useStore } from '../../store/context'
 import { DEMO_PARENT } from '../../store/state'
-import { AssignmentDetails, StatusBadge } from './AssignmentDetails'
+import { BoardingPass, WaitlistCard } from './BoardingPass'
 
 function greeting() {
   const h = new Date().getHours()
@@ -15,90 +16,85 @@ function greeting() {
 
 export function ParentHome() {
   const { state, view } = useStore()
+  const { settings } = state
   const children = state.students.filter((s) => s.parentId === DEMO_PARENT.id).sort((a, b) => a.registeredAt - b.registeredAt)
 
+  const steps = [
+    { icon: <MapPinned />, title: 'Pin your home', body: `A boarding point within ${formatDistance(settings.maxWalkMeters)} on foot is picked for you, on a road a vehicle can reach.` },
+    { icon: <Ticket />, title: 'Get your pass', body: 'See the vehicle, pickup time and fee straight away. Prefer another nearby stop? Choose it yourself.' },
+    { icon: <Hourglass />, title: 'Full right now?', body: 'You join a queue and are seated automatically when a seat opens. Earlier requests are favoured.' },
+  ]
+
   return (
-    <div className="mx-auto w-full max-w-[1100px] px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-[1100px] px-4 py-8 sm:px-6 sm:py-10">
       <PageHeader
         eyebrow={`${greeting()}, ${DEMO_PARENT.name.split(' ')[0]}`}
         title="School transport"
-        description={`Request a seat with ${state.settings.name} and see exactly where and when your child will be picked up.`}
+        description={`Request a seat with ${settings.name} and see exactly where and when your child will be picked up.`}
         actions={
-          <ButtonLink href={href('/parent/request')} size="lg">
-            <Plus className="size-5" aria-hidden="true" />
-            Request a seat
-          </ButtonLink>
+          children.length > 0 ? (
+            <ButtonLink href={href('/parent/request')} size="lg">
+              <Plus className="size-5" aria-hidden="true" />
+              Add a child
+            </ButtonLink>
+          ) : undefined
         }
       />
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <section aria-labelledby="children-heading">
-          <h2 id="children-heading" className="sr-only">
-            Your children
-          </h2>
-          {children.length === 0 ? (
-            <Card>
-              <EmptyState
-                icon={<Bus />}
-                title="No requests yet"
-                action={
-                  <ButtonLink href={href('/parent/request')}>
-                    <Plus className="size-4" aria-hidden="true" />
-                    Request a seat
-                  </ButtonLink>
-                }
-              >
-                Drop a pin at your home. The system picks the boarding point and vehicle, and tells you the pickup time and fee. It takes about a minute.
-              </EmptyState>
-            </Card>
-          ) : (
-            <ul className="grid gap-4">
-              {children.map((child) => {
-                const student = view.students.get(child.id)
-                return (
-                  <li key={child.id}>
-                    <Card className="overflow-hidden animate-rise">
-                      <div className="flex items-start gap-3 p-5 pb-4">
-                        <Initials name={child.name} />
-                        <div className="min-w-0 flex-1">
-                          <h3 className="truncate text-base font-bold text-ink">{child.name}</h3>
-                          <p className="truncate text-sm text-ink-3">
-                            {child.grade} · {child.address}
-                          </p>
-                        </div>
-                        <StatusBadge student={student} />
-                      </div>
-                      <div className="px-5 pb-5">
-                        <AssignmentDetails student={student} settings={state.settings} compact />
-                      </div>
-                      <a href={href(`/parent/child/${child.id}`)} className="flex items-center justify-between border-t border-line bg-muted/60 px-5 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary-soft">
-                        {student?.status === 'seated' ? 'Full details & live tracking' : 'View request'}
-                        <ArrowRight className="size-4" aria-hidden="true" />
-                      </a>
-                    </Card>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
-
-        <aside>
-          <Card className="p-5">
-            <h2 className="flex items-center gap-2 text-[15px] font-bold text-ink">
-              <Info className="size-4 text-primary" aria-hidden="true" />
-              How it works
-            </h2>
-            <ul className="mt-3 flex flex-col gap-3 text-sm text-ink-2">
-              <li>You pin your home. The system picks a boarding point within {formatDistance(state.settings.maxWalkMeters)} on foot, on a road a vehicle can use.</li>
-              <li>Main roads get a bus or van. If your lane is narrow and no main road is close, a van comes to the lane.</li>
-              <li>Your fee depends on how far your boarding point is from school.</li>
-              <li>Prefer a different nearby stop? You can pick one yourself.</li>
-              <li>If seats are full, you join a queue and are seated automatically when one opens. Earlier requests are favoured.</li>
-            </ul>
+      <section aria-labelledby="children-heading" className="mt-8">
+        <h2 id="children-heading" className="sr-only">
+          Your children
+        </h2>
+        {children.length === 0 ? (
+          <Card>
+            <EmptyState
+              illustrated
+              title="Let's get your child a seat"
+              action={
+                <ButtonLink href={href('/parent/request')} size="lg">
+                  <Plus className="size-5" aria-hidden="true" />
+                  Request a seat
+                </ButtonLink>
+              }
+            >
+              Drop a pin at your home. The boarding point, vehicle, pickup time and fee are worked out for you. It takes about a minute.
+            </EmptyState>
           </Card>
-        </aside>
-      </div>
+        ) : (
+          <Stagger as="ul" className="grid gap-6 md:grid-cols-2">
+            {children.map((child) => {
+              const student = view.students.get(child.id)
+              return (
+                <StaggerItem as="li" key={child.id} className="flex flex-col gap-3">
+                  {student?.status === 'seated' ? <BoardingPass student={student} compact /> : student?.status === 'waitlisted' ? <WaitlistCard student={student} settings={settings} /> : null}
+                  <a href={href(`/parent/child/${child.id}`)} className="group inline-flex items-center gap-1.5 self-end rounded-lg text-sm font-bold text-primary">
+                    {student?.status === 'seated' ? 'Live tracking and details' : 'View request'}
+                    <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
+                  </a>
+                </StaggerItem>
+              )
+            })}
+          </Stagger>
+        )}
+      </section>
+
+      <section aria-labelledby="how-heading" className="mt-10">
+        <h2 id="how-heading" className="flex items-center gap-2 text-base font-bold text-ink">
+          <Sparkles className="size-4 text-primary" aria-hidden="true" />
+          How it works
+        </h2>
+        <Stagger as="ol" className="mt-3 grid gap-3 sm:grid-cols-3">
+          {steps.map((step) => (
+            <StaggerItem as="li" key={step.title} className="rounded-3xl bg-surface p-5">
+              <span className="grid size-10 place-items-center rounded-2xl bg-accent-soft text-ink [&>svg]:size-5" aria-hidden="true">
+                {step.icon}
+              </span>
+              <h3 className="mt-3 font-bold text-ink">{step.title}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-ink-2">{step.body}</p>
+            </StaggerItem>
+          ))}
+        </Stagger>
+      </section>
     </div>
   )
 }

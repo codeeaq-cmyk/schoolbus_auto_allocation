@@ -31,7 +31,8 @@ export function RecommendationsProvider({ children }: { children: ReactNode }) {
         timer = window.setTimeout(run, 0)
       }
       run()
-    }, 500)
+      // Wait until the page has finished arriving, so the search never stutters its animations.
+    }, 1100)
 
     return () => {
       cancelled = true

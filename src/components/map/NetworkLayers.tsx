@@ -31,7 +31,7 @@ export function NetworkLayers({ state, view, routeStatus, showStops = true, show
           key={route.vehicle.id}
           route={route}
           emphasis={emphasis(route)}
-          approximate={routeStatus[route.vehicle.id] !== 'road'}
+          approximate={routeStatus[route.vehicle.id] === 'straight'}
           onSelect={onSelectVehicle ? () => onSelectVehicle(route.vehicle.id) : undefined}
         />
       ))}

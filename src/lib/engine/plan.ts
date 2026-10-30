@@ -6,13 +6,20 @@ import { haversine } from '../geo'
 import { hasRoadData, nameForPoint, nearestRoad } from '../roads'
 import type { AppState, BoardingPoint, LatLng, Plan, Route, Settings, Student, Vehicle, WaitReason } from '../types'
 import { clusterStudents, effectiveWalk, makeStop } from './boarding'
+import { feeForStop } from './fees'
 import { solveRouting, type SolverStop, type SolverVehicle } from './solver'
 
 const RIDE_VALUE = { profit: 1, balanced: 4, comfort: 14 }
 const OVER_LIMIT_VALUE = 300
-const UNSERVED_VALUE = 6000
+const UNSERVED_VALUE = 5000
 const MOVE_VALUE = 120
+/** Van seats are scarce: lanes have nothing else, so a child a bus could carry should ride the bus. */
+const VAN_SEAT_VALUE = 120
 const SEED = 20261030
+/** Monthly cost of each metre a child walks, for weighing a longer walk against a detour. */
+const WALK_VALUE = 1
+/** How far the running cost of serving one child may exceed their fee. */
+const AFFORD = { profit: 1, balanced: 1.5, comfort: 2.5 }
 
 export function metersPerMinute(vehicle: Pick<Vehicle, 'type'>, settings: Settings): number {
   return ((vehicle.type === 'bus' ? settings.speedBusKmh : settings.speedVanKmh) * 1000) / 60
@@ -222,6 +229,7 @@ export function optimise(state: AppState, options: OptimiseOptions = {}): Plan {
     overLimitValue: OVER_LIMIT_VALUE,
     unservedValue: UNSERVED_VALUE,
     moveValue: stability ? MOVE_VALUE : 0,
+    vanSeatValue: VAN_SEAT_VALUE,
     iterations,
     seed: SEED,
     initial,
@@ -253,12 +261,15 @@ export function optimise(state: AppState, options: OptimiseOptions = {}): Plan {
         return { vehicle, route, ...bestInsertion(route, group.stop.position, vehicle, stopsById, settings.location) }
       })
       .sort((a, b) => a.added - b.added)
+    const hadSeats = options_.length > 0
     for (const option of options_) {
       if (queue.length === 0) break
       const free = option.vehicle.seats - (counts.get(option.vehicle.id) ?? 0)
       if (free <= 0) continue
       if (!option.route.stopIds.includes(group.stop.id)) {
         const positionNow = bestInsertion(option.route, group.stop.position, option.vehicle, stopsById, settings.location)
+        // A pinned group is the school's call; otherwise don't send a vehicle across town.
+        if (!group.vehicleId && option.route.stopIds.length > 0 && positionNow.added > detourLimit(option.vehicle, settings)) continue
         const ride = longestRide(option.route, option.vehicle, stopsById, settings, { index: positionNow.index, position: group.stop.position })
         if (ride > settings.maxRideMin * 1.1) continue
         option.route.stopIds.splice(positionNow.index, 0, group.stop.id)
@@ -268,7 +279,7 @@ export function optimise(state: AppState, options: OptimiseOptions = {}): Plan {
         counts.set(option.vehicle.id, (counts.get(option.vehicle.id) ?? 0) + 1)
       }
     }
-    const reason: WaitReason = group.stop.access === 'van' ? 'no-van' : 'seats-full'
+    const reason: WaitReason = hadSeats ? 'no-route' : group.stop.access === 'van' ? 'no-van' : 'seats-full'
     for (const rider of queue) plan.waitlist[rider.id] = reason
   }
 
@@ -276,35 +287,115 @@ export function optimise(state: AppState, options: OptimiseOptions = {}): Plan {
   return plan
 }
 
-/** Places one child with the least disruption: an existing stop if one is in reach, else a new one. */
+/** Monthly cost of a vehicle running these stops: the same sum the optimiser minimises. */
+function routeCost(vehicle: Vehicle, points: { position: LatLng; load: number }[], settings: Settings): number {
+  if (points.length === 0) return 0
+  const speed = metersPerMinute(vehicle, settings)
+  const dwell = settings.dwellSec / 60
+  let meters = travelMeters(vehicle.start.position, points[0].position)
+  for (let i = 1; i < points.length; i++) meters += travelMeters(points[i - 1].position, points[i].position)
+  meters += travelMeters(points[points.length - 1].position, settings.location) + tailMeters(vehicle, settings)
+
+  let cost = vehicle.crewMonthly + meters * monthlyCostPerMeter(vehicle, settings)
+  let minutes = 0
+  let next = settings.location
+  for (let i = points.length - 1; i >= 0; i--) {
+    minutes += travelMeters(points[i].position, next) / speed + dwell
+    cost += points[i].load * minutes * RIDE_VALUE[settings.priority]
+    if (minutes > settings.maxRideMin) cost += points[i].load * (minutes - settings.maxRideMin) * OVER_LIMIT_VALUE
+    next = points[i].position
+  }
+  return cost
+}
+
+/** Metres of extra driving this vehicle may take on for one child. */
+function detourLimit(vehicle: Vehicle, settings: Settings): number {
+  return settings.maxDetourMin * metersPerMinute(vehicle, settings)
+}
+
+interface Target {
+  position: LatLng
+  access: BoardingPoint['access']
+  /** Null when this would be a new boarding point. */
+  stop: BoardingPoint | null
+  walk: number
+}
+
+interface SeatMove {
+  riders: Student[]
+  stopId: string
+  to: Vehicle
+  toRoute: Route
+  /** Where to add the stop on the receiving route; -1 if it already stops there. */
+  toIndex: number
+  /** The whole group is leaving, so the stop can come off the old route. */
+  emptiesStop: boolean
+}
+
+interface Placement {
+  vehicle: Vehicle
+  route: Route
+  target: Target
+  /** Where to add the stop on the route; -1 if it already stops there. */
+  index: number
+  cost: number
+  move: SeatMove | null
+  /** The stop list the route ends up with before adding the target. */
+  stopIds: string[]
+}
+
+/**
+ * Places one child with the least disruption, and refuses to be silly about it.
+ *
+ * 1. A vehicle already stopping within a comfortable walk, with a free seat: nothing
+ *    changes for anyone, so take it.
+ * 2. Otherwise price every way of serving them: a stop further along the walking limit,
+ *    a new stop on a passing route, or freeing a seat on a full vehicle that passes the
+ *    door by moving a rider who can use another vehicle just as easily.
+ * 3. Take the cheapest, but only if it is short enough for the children already on board
+ *    and doesn't cost more than the child pays. Otherwise they wait, and the school is
+ *    told a vehicle is needed there, rather than a van driving across the city for one child.
+ *
+ * A vehicle the school pinned the child to is their decision, so it skips step 3.
+ */
 function placeIn(state: AppState, plan: Plan, student: Student): WaitReason | null {
   const { settings } = state
-  const walk = effectiveWalk(settings)
+  const comfortable = effectiveWalk(settings)
   const stopsById = new Map(plan.stops.map((s) => [s.id, s]))
   const counts = seatCounts(plan)
   const pinnedVehicle = usableVehicle(state, student.pinnedVehicleId)
   const pinnedStop = student.pinnedStopId ? stopsById.get(student.pinnedStopId) : undefined
-  const fleet = state.vehicles.filter((v) => v.enabled && (!pinnedVehicle || v.id === pinnedVehicle.id))
+  const everyone = state.vehicles.filter((v) => v.enabled)
+  const fleet = everyone.filter((v) => !pinnedVehicle || v.id === pinnedVehicle.id)
   const routeOf = (v: Vehicle) => plan.routes.find((r) => r.vehicleId === v.id)
   const hasSeat = (v: Vehicle) => (counts.get(v.id) ?? 0) < v.seats
+
   const riders = new Map<string, number>()
-  for (const seat of Object.values(plan.seats)) riders.set(seat.stopId, (riders.get(seat.stopId) ?? 0) + 1)
+  const load = new Map<string, number>()
+  const seatedAt = new Map<string, Student[]>()
+  for (const other of state.students) {
+    const s = plan.seats[other.id]
+    if (!s) continue
+    riders.set(s.stopId, (riders.get(s.stopId) ?? 0) + 1)
+    const key = `${s.vehicleId}|${s.stopId}`
+    load.set(key, (load.get(key) ?? 0) + 1)
+    if (!seatedAt.has(key)) seatedAt.set(key, [])
+    seatedAt.get(key)!.push(other)
+  }
 
   const seat = (stop: BoardingPoint, vehicle: Vehicle) => {
     plan.seats[student.id] = { stopId: stop.id, vehicleId: vehicle.id }
     delete plan.waitlist[student.id]
   }
 
-  const nearby = (
-    pinnedStop
-      ? [pinnedStop]
-      : plan.stops
-          .filter((s) => haversine(student.home, s.position) <= walk && (riders.get(s.id) ?? 0) < settings.maxStopRiders)
-          .sort((a, b) => haversine(student.home, a.position) - haversine(student.home, b.position))
-  ) as BoardingPoint[]
+  const within = (s: BoardingPoint) => haversine(student.home, s.position)
+  const nearby = pinnedStop
+    ? [pinnedStop]
+    : plan.stops.filter((s) => within(s) <= settings.maxWalkMeters && (riders.get(s.id) ?? 0) < settings.maxStopRiders).sort((a, b) => within(a) - within(b))
 
-  // A vehicle already stopping nearby with a free seat changes nothing for anyone else.
+  // A vehicle already stopping close by with a free seat changes nothing for anyone else.
   for (const stop of nearby) {
+    if (!pinnedStop && within(stop) > comfortable) break
     for (const vehicle of fleet) {
       if (hasSeat(vehicle) && routeOf(vehicle)?.stopIds.includes(stop.id)) {
         seat(stop, vehicle)
@@ -313,44 +404,162 @@ function placeIn(state: AppState, plan: Plan, student: Student): WaitReason | nu
     }
   }
 
-  // Otherwise a route has to change. Find the cheapest change that keeps rides within the limit.
-  let anchor: { position: LatLng; access: BoardingPoint['access'] } | null = null
-  if (!pinnedStop) {
-    if (!hasRoadData(student.home)) return 'too-far'
-    const wide = nearestRoad(student.home, 3, walk)
-    const any = wide ?? nearestRoad(student.home, 2, settings.maxWalkMeters)
-    if (any) anchor = { position: any.position, access: wide ? 'bus' : 'van' }
-  }
+  if (!pinnedStop && !hasRoadData(student.home)) return 'too-far'
 
-  const targets: { position: LatLng; access: BoardingPoint['access']; stop: BoardingPoint | null }[] = [
-    ...nearby.map((stop) => ({ position: stop.position, access: stop.access, stop })),
-    ...(anchor ? [{ ...anchor, stop: null }] : []),
-  ]
+  const targets: Target[] = nearby.map((stop) => ({ position: stop.position, access: stop.access, stop, walk: within(stop) }))
+  if (!pinnedStop) {
+    // A main road at the edge of the walking limit beats a van-only lane stop if it saves a long run.
+    const wide = nearestRoad(student.home, 3, settings.maxWalkMeters)
+    if (wide) targets.push({ position: wide.position, access: 'bus', stop: null, walk: wide.meters })
+    if (!wide || wide.meters > comfortable) {
+      const lane = nearestRoad(student.home, 2, settings.maxWalkMeters)
+      if (lane) targets.push({ position: lane.position, access: 'van', stop: null, walk: lane.meters })
+    }
+  }
   if (targets.length === 0) return 'no-road'
 
-  let best: { vehicle: Vehicle; route: Route; index: number; target: (typeof targets)[number]; cost: number } | null = null
+  const pointsOf = (vehicle: Vehicle, stopIds: string[]) => stopIds.map((id) => ({ position: stopsById.get(id)!.position, load: load.get(`${vehicle.id}|${id}`) ?? 0 }))
+  const insertTarget = (points: { position: LatLng; load: number }[], stopIds: string[], index: number, target: Target, vehicle: Vehicle) => {
+    const out = [...points]
+    if (index >= 0) out.splice(index, 0, { position: target.position, load: 1 })
+    else {
+      const at = target.stop ? stopIds.indexOf(target.stop.id) : -1
+      if (at >= 0) out[at] = { ...out[at], load: out[at].load + 1 }
+    }
+    return routeCost(vehicle, out, settings)
+  }
+
+  /** Can a rider on this full vehicle move to another without a long run of their own? */
+  const bestMove = (vehicle: Vehicle, route: Route, target: Target, limit: number): { cost: number; index: number; move: SeatMove; stopIds: string[] } | null => {
+    let best: { cost: number; index: number; move: SeatMove; stopIds: string[] } | null = null
+    const before = routeCost(vehicle, pointsOf(vehicle, route.stopIds), settings)
+    for (const stopId of route.stopIds) {
+      const stop = stopsById.get(stopId)!
+      if (stop.pinnedVehicleId === vehicle.id || target.stop?.id === stopId) continue
+      const onBoard = seatedAt.get(`${vehicle.id}|${stopId}`) ?? []
+      // Newest requests move first; pinned riders never do.
+      const movable = onBoard.filter((r) => !r.pinnedVehicleId).sort((a, b) => b.registeredAt - a.registeredAt)
+      if (movable.length === 0) continue
+
+      for (const other of everyone) {
+        if (other.id === vehicle.id || !canReach(other, stop)) continue
+        const otherRoute = routeOf(other)
+        const free = other.seats - (counts.get(other.id) ?? 0)
+        if (!otherRoute || otherRoute.locked || otherRoute.stopIds.length === 0 || free < 1) continue
+
+        const passes = otherRoute.stopIds.includes(stopId)
+        const insertion = passes ? { index: -1, added: 0 } : bestInsertion(otherRoute, stop.position, other, stopsById, settings.location)
+        if (insertion.added > detourLimit(other, settings)) continue
+
+        const whole = movable.length === onBoard.length && free >= onBoard.length
+        const moving = whole ? movable : movable.slice(0, 1)
+        const stopIds = whole ? route.stopIds.filter((id) => id !== stopId) : route.stopIds
+        const trimmed: Route = { ...route, stopIds }
+        const placed = target.stop && stopIds.includes(target.stop.id) ? { index: -1, added: 0 } : bestInsertion(trimmed, target.position, vehicle, stopsById, settings.location)
+        if (placed.added > limit) continue
+
+        const points = pointsOf(vehicle, stopIds).map((point, i) => (!whole && stopIds[i] === stopId ? { ...point, load: point.load - moving.length } : point))
+        const otherPoints = pointsOf(other, otherRoute.stopIds)
+        const receiving = [...otherPoints]
+        if (passes) {
+          const at = otherRoute.stopIds.indexOf(stopId)
+          receiving[at] = { ...receiving[at], load: receiving[at].load + moving.length }
+        } else {
+          receiving.splice(insertion.index, 0, { position: stop.position, load: moving.length })
+        }
+        const cost =
+          insertTarget(points, stopIds, placed.index, target, vehicle) -
+          before +
+          routeCost(other, receiving, settings) -
+          routeCost(other, otherPoints, settings) +
+          moving.length * MOVE_VALUE
+        if (!best || cost < best.cost) {
+          best = {
+            cost,
+            index: placed.index,
+            stopIds,
+            move: { riders: moving, stopId, to: other, toRoute: otherRoute, toIndex: insertion.index, emptiesStop: whole },
+          }
+        }
+      }
+    }
+    return best
+  }
+
+  let best: Placement | null = null
   let sawVehicle = false
   let sawSeat = false
+  let sawDetour = false
+
   for (const target of targets) {
+    const walkCost = target.walk * WALK_VALUE
     for (const vehicle of fleet) {
       if (target.access === 'van' && vehicle.type !== 'van') continue
-      sawVehicle = true
-      if (!hasSeat(vehicle)) continue
-      sawSeat = true
       const route = routeOf(vehicle)
-      if (!route || route.locked) continue
-      const { index, added } = bestInsertion(route, target.position, vehicle, stopsById, settings.location)
-      if (longestRide(route, vehicle, stopsById, settings, { index, position: target.position }) > settings.maxRideMin) continue
-      const start = route.stopIds.length === 0 ? vehicle.crewMonthly : 0
-      const cost = added * monthlyCostPerMeter(vehicle, settings) + start
-      if (!best || cost < best.cost) best = { vehicle, route, index, target, cost }
+      if (!route) continue
+      sawVehicle = true
+      const passes = !!target.stop && route.stopIds.includes(target.stop.id)
+      const limit = pinnedVehicle ? Infinity : detourLimit(vehicle, settings)
+
+      if (hasSeat(vehicle)) {
+        sawSeat = true
+        if (passes) {
+          if (!best || walkCost < best.cost) best = { vehicle, route, target, index: -1, cost: walkCost, move: null, stopIds: route.stopIds }
+          continue
+        }
+        if (route.locked) continue
+        const { index, added } = bestInsertion(route, target.position, vehicle, stopsById, settings.location)
+        if (route.stopIds.length > 0 && added > limit) {
+          sawDetour = true
+          continue
+        }
+        // A route already over the limit can still take a stop that barely changes it; a pinned child always can.
+        const ride = longestRide(route, vehicle, stopsById, settings, { index, position: target.position })
+        if (!pinnedVehicle && ride > settings.maxRideMin && ride > longestRide(route, vehicle, stopsById, settings) + 2) {
+          sawDetour = true
+          continue
+        }
+        const points = pointsOf(vehicle, route.stopIds)
+        const cost = insertTarget(points, route.stopIds, index, target, vehicle) - routeCost(vehicle, points, settings)
+        const fee = feeForStop(target.position, settings)
+        // Starting an idle vehicle: its crew is judged by the plan as a whole, not by this one child.
+        // With nothing running at all, someone has to be first.
+        const running = route.stopIds.length === 0 ? cost - vehicle.crewMonthly : cost
+        const first = route.stopIds.length === 0 && plan.routes.every((r) => r.stopIds.length === 0)
+        if (!pinnedVehicle && !first && running > fee * AFFORD[settings.priority]) {
+          sawDetour = true
+          continue
+        }
+        const total = cost + walkCost
+        if (!best || total < best.cost) best = { vehicle, route, target, index, cost: total, move: null, stopIds: route.stopIds }
+      } else if (!route.locked) {
+        // Full, but it passes right here. Could someone on board ride another vehicle instead?
+        const swap = bestMove(vehicle, route, target, limit)
+        if (!swap) continue
+        const fee = feeForStop(target.position, settings)
+        if (!pinnedVehicle && swap.cost > fee * AFFORD[settings.priority]) {
+          sawDetour = true
+          continue
+        }
+        sawSeat = true
+        const total = swap.cost + walkCost
+        if (!best || total < best.cost) best = { vehicle, route, target, index: swap.index, cost: total, move: swap.move, stopIds: swap.stopIds }
+      }
     }
   }
 
   if (!best) {
-    if (!sawVehicle) return targets.every((t) => t.access === 'van') ? 'no-van' : 'seats-full'
-    if (!sawSeat) return targets.every((t) => t.access === 'van') ? 'no-van' : 'seats-full'
-    return 'too-far'
+    const vanOnly = targets.every((t) => t.access === 'van')
+    if (sawDetour) return 'no-route'
+    if (!sawVehicle || !sawSeat) return vanOnly ? 'no-van' : 'seats-full'
+    return 'no-route'
+  }
+
+  if (best.move) {
+    const { riders: moving, stopId, to, toRoute, toIndex, emptiesStop } = best.move
+    for (const rider of moving) plan.seats[rider.id] = { stopId, vehicleId: to.id }
+    if (toIndex >= 0) toRoute.stopIds.splice(toIndex, 0, stopId)
+    if (emptiesStop) best.route.stopIds = best.route.stopIds.filter((id) => id !== stopId)
   }
 
   let stop = best.target.stop
@@ -360,7 +569,7 @@ function placeIn(state: AppState, plan: Plan, student: Student): WaitReason | nu
     stop = stopsById.get(id) ?? makeStop(best.target.position, best.target.access, nameForPoint(best.target.position, taken))
     if (!stopsById.has(id)) plan.stops.push(stop)
   }
-  best.route.stopIds.splice(best.index, 0, stop.id)
+  if (best.index >= 0 && !best.route.stopIds.includes(stop.id)) best.route.stopIds.splice(best.index, 0, stop.id)
   seat(stop, best.vehicle)
   return null
 }

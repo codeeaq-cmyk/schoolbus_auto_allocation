@@ -1,12 +1,14 @@
-import { Download, Hourglass, MapPinOff, RotateCcw, Search, SlidersHorizontal, Sparkles, Trash2, UsersRound } from 'lucide-react'
+import { ChevronRight, Download, Hourglass, MapPinOff, RotateCcw, Search, Sparkles, Trash2, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { DecisionChip } from '../../components/ui/AutoChip'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { Segmented } from '../../components/ui/controls'
 import { Dialog } from '../../components/ui/Dialog'
 import { Field, Input, Select } from '../../components/ui/Field'
-import { EmptyState, PageHeader } from '../../components/ui/misc'
+import { EmptyState, Initials, PageHeader } from '../../components/ui/misc'
+import { Stagger, StaggerItem } from '../../components/ui/motion'
 import { useToast } from '../../components/ui/toast-context'
 import { VehicleChip } from '../../components/ui/VehicleChip'
 import { cn } from '../../lib/cn'
@@ -14,15 +16,31 @@ import { downloadCsv } from '../../lib/csv'
 import { effectiveWalk } from '../../lib/engine/boarding'
 import { explainSeat, waitReasonText } from '../../lib/engine/explain'
 import { canReach, seatCounts } from '../../lib/engine/plan'
-import { feeForStop } from '../../lib/engine/view'
+import { feeForStop, type StudentView } from '../../lib/engine/view'
 import { inr } from '../../lib/format'
 import { formatDistance, haversine } from '../../lib/geo'
 import { formatClock, timeAgo } from '../../lib/time'
-import type { Student } from '../../lib/types'
+import type { Student, WaitReason } from '../../lib/types'
 import { pinStudentStop, pinStudentVehicle, removeStudent, setStudentFee, updateStudent } from '../../store/actions'
 import { useStore } from '../../store/context'
 
 type StatusFilter = 'all' | 'seated' | 'waitlisted'
+
+const WAIT_LABEL: Record<WaitReason, string> = {
+  'too-far': 'Beyond the ride limit',
+  'no-road': 'No road in reach',
+  'no-van': 'Needs a van seat',
+  'no-route': 'No route passes nearby',
+  'seats-full': 'Waiting for a seat',
+}
+
+function WaitBadge({ reason }: { reason: WaitReason }) {
+  return (
+    <Badge tone="warning" icon={reason === 'too-far' || reason === 'no-road' ? <MapPinOff /> : <Hourglass />}>
+      Waitlisted
+    </Badge>
+  )
+}
 
 export function Students({ initialStatus }: { initialStatus: string | null }) {
   const { state, view } = useStore()
@@ -58,7 +76,7 @@ export function Students({ initialStatus }: { initialStatus: string | null }) {
           s.grade,
           s.parentName,
           s.parentPhone,
-          seated ? 'Seated' : `Waitlisted (${row.status === 'waitlisted' ? row.reason : ''})`,
+          seated ? 'Seated' : `Waitlisted (${row.status === 'waitlisted' ? WAIT_LABEL[row.reason] : ''})`,
           seated?.vehicle.label ?? '',
           seated?.stop.name ?? '',
           seated ? formatClock(seated.pickup) : '',
@@ -72,10 +90,10 @@ export function Students({ initialStatus }: { initialStatus: string | null }) {
     ])
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:py-8">
       <PageHeader
         title="Students"
-        description="Everyone who asked for a seat and what the system decided for them. Open any child to see why, or to overrule it."
+        description="Everyone who asked for a seat and what the system decided. Open any child to see why, or to overrule it."
         actions={
           <Button variant="secondary" onClick={exportCsv} disabled={rows.length === 0}>
             <Download className="size-4" aria-hidden="true" />
@@ -92,21 +110,21 @@ export function Students({ initialStatus }: { initialStatus: string | null }) {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden="true" />
           <Input id="student-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, parent, stop…" className="pl-9" />
         </div>
-        <div className="flex items-center rounded-xl bg-muted p-1" role="group" aria-label="Filter by status">
-          {(['all', 'seated', 'waitlisted'] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={status === s}
-              onClick={() => setStatus(s)}
-              className={cn('flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-sm font-semibold capitalize transition-colors', status === s ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink')}
-            >
-              {s}
-              <span className="rounded-md bg-muted px-1.5 text-xs tabular">{counts[s]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="lg:w-56">
+        <Segmented
+          label="Filter by status"
+          value={status}
+          onChange={setStatus}
+          options={(['all', 'seated', 'waitlisted'] as const).map((s) => ({
+            id: s,
+            label: (
+              <>
+                <span className="capitalize">{s}</span>
+                <span className="text-xs font-bold text-ink-3 tabular">{counts[s]}</span>
+              </>
+            ),
+          }))}
+        />
+        <div className="lg:w-52">
           <label htmlFor="vehicle-filter" className="sr-only">
             Filter by vehicle
           </label>
@@ -124,87 +142,121 @@ export function Students({ initialStatus }: { initialStatus: string | null }) {
         </p>
       </div>
 
-      <Card className="mt-4 overflow-hidden">
-        {rows.length === 0 ? (
+      {rows.length === 0 ? (
+        <Card className="mt-4">
           <EmptyState icon={<UsersRound />} title="No students match">
             Try a different search or filter.
           </EmptyState>
-        ) : (
-          <div className="relative overflow-x-auto">
-            <table className="w-full min-w-[1040px] text-sm">
+        </Card>
+      ) : (
+        <>
+          {/* Phones get cards rather than a table that scrolls sideways. */}
+          <Stagger as="ul" className="mt-4 flex flex-col gap-2.5 lg:hidden">
+            {rows.slice(0, 60).map((row) => (
+              <StaggerItem as="li" key={row.student.id}>
+                <button type="button" onClick={() => setEditingId(row.student.id)} aria-label={`Review ${row.student.name}`} className="flex w-full cursor-pointer items-center gap-3 rounded-2xl bg-surface p-3.5 text-left transition-[background-color,transform] hover:bg-primary-soft active:scale-[0.99]">
+                  <Initials name={row.student.name} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-ink">{row.student.name}</span>
+                    <span className="block truncate text-xs text-ink-3">{row.status === 'seated' ? `${row.stop.name} · ${formatClock(row.pickup)}` : WAIT_LABEL[row.reason]}</span>
+                  </span>
+                  {row.status === 'seated' ? <VehicleChip vehicle={row.vehicle} variant="solid" /> : <WaitBadge reason={row.reason} />}
+                  <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden="true" />
+                </button>
+              </StaggerItem>
+            ))}
+            {rows.length > 60 && <li className="py-2 text-center text-sm text-ink-3">Showing the 60 newest. Search to find others.</li>}
+          </Stagger>
+
+          <Card className="relative mt-4 hidden overflow-hidden lg:block">
+            <table className="w-full text-sm">
               <caption className="sr-only">Students and their automatic or manual transport decisions</caption>
               <thead>
-                <tr className="border-b border-line bg-muted/70 text-left text-xs font-bold uppercase tracking-wide text-ink-3">
-                  <th scope="col" className="px-4 py-3">Child</th>
-                  <th scope="col" className="px-4 py-3">Vehicle</th>
-                  <th scope="col" className="px-4 py-3">Boarding point</th>
-                  <th scope="col" className="px-4 py-3">Pickup</th>
-                  <th scope="col" className="px-4 py-3 text-right">Walk</th>
-                  <th scope="col" className="px-4 py-3 text-right">Ride</th>
-                  <th scope="col" className="px-4 py-3 text-right">Fee</th>
-                  <th scope="col" className="px-4 py-3">Requested</th>
-                  <th scope="col" className="px-4 py-3">
+                <tr className="border-b border-line text-left text-xs font-bold uppercase tracking-wide text-ink-3">
+                  <th scope="col" className="px-5 py-3.5">Child</th>
+                  <th scope="col" className="px-3 py-3.5">Vehicle</th>
+                  <th scope="col" className="px-3 py-3.5">Boarding point</th>
+                  <th scope="col" className="px-3 py-3.5">Pickup</th>
+                  <th scope="col" className="px-3 py-3.5 text-right">Walk</th>
+                  <th scope="col" className="px-3 py-3.5 text-right">Ride</th>
+                  <th scope="col" className="px-3 py-3.5 text-right">Fee</th>
+                  <th scope="col" className="px-3 py-3.5">Requested</th>
+                  <th scope="col" className="px-5 py-3.5">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line">
-                {rows.map((row) => {
-                  const s = row.student
-                  const overLimit = row.status === 'seated' && row.rideMin > state.settings.maxRideMin
-                  return (
-                    <tr key={s.id} className="transition-colors hover:bg-muted/50">
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <p className="font-semibold text-ink">{s.name}</p>
-                        <p className="text-xs text-ink-3">{s.grade}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.status === 'seated' ? (
-                          <span className="flex items-center gap-2">
-                            <VehicleChip vehicle={row.vehicle} variant="solid" />
-                            {s.pinnedVehicleId && <DecisionChip manual />}
-                          </span>
-                        ) : (
-                          <Badge tone="warning" icon={row.reason === 'too-far' || row.reason === 'no-road' ? <MapPinOff /> : <Hourglass />}>
-                            Waitlisted
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.status === 'seated' ? (
-                          <span className="flex items-center gap-2">
-                            <span className="max-w-[220px] truncate text-ink-2">{row.stop.name}</span>
-                            {s.pinnedStopId && <DecisionChip manual />}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-ink-3">{row.reason === 'too-far' ? 'Beyond the ride limit' : row.reason === 'no-road' ? 'No road in reach' : row.reason === 'no-van' ? 'Needs a van seat' : 'Waiting for a seat'}</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink tabular">{row.status === 'seated' ? formatClock(row.pickup) : '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-ink-2 tabular">{row.status === 'seated' ? formatDistance(row.walkMeters) : '—'}</td>
-                      <td className={cn('whitespace-nowrap px-4 py-3 text-right tabular', overLimit ? 'font-bold text-danger-ink' : 'text-ink-2')}>{row.status === 'seated' ? `${Math.round(row.rideMin)} min` : '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-ink-2 tabular">
-                        {inr(row.fee)}
-                        {s.feeOverride !== null && <span className="sr-only"> (set by hand)</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-ink-3">{timeAgo(s.registeredAt)}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Button variant="secondary" size="sm" onClick={() => setEditingId(s.id)}>
-                          <SlidersHorizontal className="size-4" aria-hidden="true" />
-                          Review
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
+              <tbody className="divide-y divide-line/70">
+                {rows.map((row) => (
+                  <Row key={row.student.id} row={row} maxRide={state.settings.maxRideMin} onOpen={() => setEditingId(row.student.id)} />
+                ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </Card>
+          </Card>
+        </>
+      )}
 
       {editing && <StudentDialog key={editing.id} student={editing} onClose={() => setEditingId(null)} />}
     </div>
+  )
+}
+
+function Row({ row, maxRide, onOpen }: { row: StudentView; maxRide: number; onOpen: () => void }) {
+  const s = row.student
+  const overLimit = row.status === 'seated' && row.rideMin > maxRide
+  return (
+    <tr className="group cursor-pointer transition-colors hover:bg-primary-soft/50" onClick={onOpen}>
+      <td className="whitespace-nowrap px-5 py-3">
+        <span className="flex items-center gap-3">
+          <Initials name={s.name} className="size-9 rounded-xl text-xs" />
+          <span>
+            <span className="block font-semibold text-ink">{s.name}</span>
+            <span className="block text-xs text-ink-3">{s.grade}</span>
+          </span>
+        </span>
+      </td>
+      <td className="px-3 py-3">
+        {row.status === 'seated' ? (
+          <span className="flex items-center gap-2">
+            <VehicleChip vehicle={row.vehicle} variant="solid" />
+            {s.pinnedVehicleId && <DecisionChip manual />}
+          </span>
+        ) : (
+          <WaitBadge reason={row.reason} />
+        )}
+      </td>
+      <td className="px-3 py-3">
+        {row.status === 'seated' ? (
+          <span className="flex items-center gap-2">
+            <span className="max-w-[220px] truncate text-ink-2">{row.stop.name}</span>
+            {s.pinnedStopId && <DecisionChip manual />}
+          </span>
+        ) : (
+          <span className="text-xs text-ink-3">{WAIT_LABEL[row.reason]}</span>
+        )}
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 font-semibold text-ink tabular">{row.status === 'seated' ? formatClock(row.pickup) : '—'}</td>
+      <td className="whitespace-nowrap px-3 py-3 text-right text-ink-2 tabular">{row.status === 'seated' ? formatDistance(row.walkMeters) : '—'}</td>
+      <td className={cn('whitespace-nowrap px-3 py-3 text-right tabular', overLimit ? 'font-bold text-danger-ink' : 'text-ink-2')}>{row.status === 'seated' ? `${Math.round(row.rideMin)} min` : '—'}</td>
+      <td className="whitespace-nowrap px-3 py-3 text-right text-ink-2 tabular">
+        {inr(row.fee)}
+        {s.feeOverride !== null && <span className="sr-only"> (set by hand)</span>}
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 text-ink-3">{timeAgo(s.registeredAt)}</td>
+      <td className="px-5 py-2 text-right">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpen()
+          }}
+          className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-xl px-2.5 text-sm font-bold text-primary transition-colors hover:bg-primary-soft"
+        >
+          Review
+          <ChevronRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
+        </button>
+      </td>
+    </tr>
   )
 }
 
@@ -231,30 +283,25 @@ function StudentDialog({ student, onClose }: { student: Student; onClose: () => 
   const standardFee = stopNow ? feeForStop(stopNow.position, state.settings) : feeForStop(student.home, state.settings)
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => !open && onClose()}
-      title={student.name}
-      description={`${student.grade} · ${student.address} · ${student.parentName}, ${student.parentPhone}`}
-    >
-      <div className="flex flex-col gap-4">
-        <div className="rounded-xl bg-primary-soft/70 p-3.5">
+    <Dialog open drawer onOpenChange={(open) => !open && onClose()} title={student.name} description={`${student.grade} · ${student.address} · ${student.parentName}, ${student.parentPhone}`}>
+      <div className="flex flex-col gap-5">
+        <div className="rounded-2xl bg-primary-soft/70 p-4">
           <p className="flex items-center gap-1.5 text-sm font-bold text-ink">
             <Sparkles className="size-4 text-primary" aria-hidden="true" />
             Why this decision
           </p>
           {row.status === 'seated' ? (
-            <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-5 text-sm text-ink-2">
+            <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-sm leading-relaxed text-ink-2">
               {reasons.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
             </ul>
           ) : (
-            <p className="mt-1.5 text-sm text-ink-2">{waitReasonText(row.reason, state.settings)}</p>
+            <p className="mt-2 text-sm leading-relaxed text-ink-2">{waitReasonText(row.reason, state.settings)}</p>
           )}
         </div>
 
-        <Field label="Vehicle" hint={student.pinnedVehicleId ? 'Pinned by hand' : 'Chosen automatically'}>
+        <Field label="Vehicle" hint={student.pinnedVehicleId ? 'Pinned by hand: the detour limit is ignored for this child' : 'Chosen automatically'}>
           {(p) => (
             <Select
               {...p}
@@ -319,7 +366,7 @@ function StudentDialog({ student, onClose }: { student: Student; onClose: () => 
           )}
         </Field>
 
-        <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-4">
+        <div className="flex flex-wrap justify-between gap-2 pt-2">
           <Button variant="ghost" size="sm" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" onClick={() => setConfirmRemove(true)}>
             <Trash2 className="size-4" aria-hidden="true" />
             Remove

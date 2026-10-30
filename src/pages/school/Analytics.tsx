@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { ChartCard, DivergingBars, Histogram, Legend, SimpleTable, StackedBars } from '../../components/charts/charts'
 import { Card, CardHeader } from '../../components/ui/Card'
 import { PageHeader, StatTile } from '../../components/ui/misc'
+import { AnimatedNumber } from '../../components/ui/motion'
 import { compareWithManual } from '../../lib/engine/baseline'
 import { breakEvenDiesel, fleetEconomics, revenueBySlab } from '../../lib/engine/economics'
 import { inr, inrSigned, kmValue, percent } from '../../lib/format'
@@ -32,26 +33,28 @@ export function Analytics() {
   }, [view, settings.maxRideMin])
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:py-8">
       <PageHeader
         title="Analytics"
         description={`Money, fuel and time for the current plan, per month over ${settings.schoolDays} school days. Costs and fees are sample figures: enter your own in Settings and Fleet.`}
       />
 
-      <section aria-label="Monthly result" className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)]">
-        <div className="flex flex-col justify-center rounded-2xl border border-line bg-surface p-6 shadow-card">
-          <p className="text-sm font-medium text-ink-3">Monthly profit</p>
-          <p className="mt-1 text-5xl font-extrabold tracking-tight text-ink">{inr(fleet.profit)}</p>
-          <p className="mt-2 text-sm text-ink-2">
+      <section aria-label="Monthly result" className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)]">
+        <div className="gradient-night flex flex-col justify-center rounded-3xl p-6 text-white">
+          <p className="text-sm font-medium text-night-ink">Monthly profit</p>
+          <p className="mt-1 text-5xl font-extrabold tracking-tight">
+            <AnimatedNumber value={fleet.profit} from={0} format={inr} />
+          </p>
+          <p className="mt-2 text-sm text-night-ink">
             {inr(fleet.revenue)} in fees − {inr(fleet.cost)} in costs. {percent(fleet.margin)} margin.
           </p>
           {fleet.unrealisedRevenue > 0 && (
-            <p className="mt-1 text-sm text-ink-3">
+            <p className="mt-1 text-sm text-night-ink">
               {fleet.waitlisted} waiting {fleet.waitlisted === 1 ? 'child' : 'children'} would add {inr(fleet.unrealisedRevenue)} in fees.
             </p>
           )}
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatTile icon={<IndianRupee />} label="Cost per child" value={inr(fleet.costPerRider)} detail="A month, all costs in" />
           <StatTile icon={<Gauge />} label="Seats filled" value={percent(fleet.seats ? fleet.seated / fleet.seats : 0)} detail={`${fleet.seated} of ${fleet.seats} seats`} />
           <StatTile icon={<Route />} label="Fleet distance" value={`${Math.round(fleet.kmDaily)} km`} detail={`A day · ${Math.round(fleet.kmMonthly).toLocaleString('en-IN')} km a month`} />
@@ -66,7 +69,7 @@ export function Analytics() {
         <div className="flex min-w-0 flex-col gap-6">
           <SavingsCard savings={savings} />
           <Card className="p-5">
-            <h2 className="text-[15px] font-bold text-ink">Fee income by distance</h2>
+            <h2 className="text-base font-bold text-ink">Fee income by distance</h2>
             <p className="mt-0.5 text-sm text-ink-3">Fees follow the road distance from the boarding point to school, not the route a vehicle happens to take.</p>
             <div className="relative mt-4 overflow-x-auto">
               <SimpleTable
@@ -80,7 +83,7 @@ export function Analytics() {
         <Card>
           <CardHeader title="Suggested improvements" description="Priced by planning each one with your real fleet and children." />
           <div className="p-5">
-            <RecommendationList />
+            <RecommendationList limit={4} />
           </div>
         </Card>
       </div>
@@ -245,11 +248,13 @@ function WhatIf() {
           <Slider id="whatif-fee" label="Transport fees" value={feeChange} min={-20} max={30} step={1} format={(n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}%`} onChange={setFeeChange} />
           <Slider id="whatif-crew" label="Crew pay" value={crewChange} min={-10} max={40} step={1} format={(n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}%`} onChange={setCrewChange} />
         </div>
-        <div className="flex flex-col justify-center rounded-2xl bg-muted p-5" aria-live="polite">
-          <p className="text-sm font-medium text-ink-3">Monthly profit in this scenario</p>
-          <p className="mt-1 text-3xl font-extrabold text-ink">{inr(scenario.profit)}</p>
-          <p className="mt-1 text-sm font-semibold text-ink-2">{changed ? `${inrSigned(delta)} against today` : 'Same as today'}</p>
-          <p className="mt-1 text-xs text-ink-3">{percent(scenario.margin)} margin · assumes every child keeps riding.</p>
+        <div className="gradient-night flex flex-col justify-center rounded-3xl p-5 text-white" aria-live="polite">
+          <p className="text-sm font-medium text-night-ink">Monthly profit in this scenario</p>
+          <p className="mt-1 text-3xl font-extrabold">
+            <AnimatedNumber value={scenario.profit} format={inr} />
+          </p>
+          <p className="mt-1 text-sm font-semibold text-accent">{changed ? `${inrSigned(delta)} against today` : 'Same as today'}</p>
+          <p className="mt-1 text-xs text-night-ink">{percent(scenario.margin)} margin · assumes every child keeps riding.</p>
         </div>
       </div>
     </Card>

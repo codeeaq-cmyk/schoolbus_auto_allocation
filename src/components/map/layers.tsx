@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import type { Polyline as LeafletPolyline } from 'leaflet'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CircleMarker, ImageOverlay, Marker, Pane, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { routeColor } from '../../lib/colors'
 import { liveVehicle, type RouteView } from '../../lib/engine/view'
@@ -17,9 +18,32 @@ interface RouteLineProps {
   onSelect?: () => void
 }
 
-/** Route polyline with a white casing so crossing routes stay separable. */
+/**
+ * Route polyline with a white casing so crossing routes stay separable. It draws
+ * itself when it first appears or its stops change, and a selected route shows
+ * moving dots in its direction of travel.
+ */
 export function RouteLine({ route, emphasis = 'normal', approximate, onSelect }: RouteLineProps) {
+  const line = useRef<LeafletPolyline>(null)
   const points = route.geometry.points
+  const drawable = emphasis !== 'dim' && points.length >= 2
+
+  useEffect(() => {
+    const el = line.current?.getElement()
+    if (!el || !drawable) return
+    el.setAttribute('pathLength', '1')
+    el.classList.add('route-draw')
+    const done = () => {
+      el.classList.remove('route-draw')
+      el.removeAttribute('pathLength')
+    }
+    el.addEventListener('animationend', done, { once: true })
+    return () => {
+      el.removeEventListener('animationend', done)
+      done()
+    }
+  }, [route.key, drawable])
+
   if (points.length < 2) return null
   const color = routeColor(route.vehicle.colorSlot)
   const weight = emphasis === 'focus' ? 6 : emphasis === 'dim' ? 3 : 4
@@ -28,6 +52,7 @@ export function RouteLine({ route, emphasis = 'normal', approximate, onSelect }:
     <>
       <Polyline positions={points} pathOptions={{ color: '#ffffff', weight: weight + 4, opacity: dim ? 0.5 : 0.95, interactive: false }} />
       <Polyline
+        ref={line}
         positions={points}
         pathOptions={{ color, weight, opacity: dim ? 0.45 : 1, dashArray: approximate ? '1 9' : undefined, lineCap: 'round', lineJoin: 'round' }}
         eventHandlers={onSelect ? { click: onSelect } : undefined}
@@ -36,6 +61,9 @@ export function RouteLine({ route, emphasis = 'normal', approximate, onSelect }:
           {route.vehicle.label} · {route.stops.length} stops{approximate ? ' · approximate path' : ''}
         </Tooltip>
       </Polyline>
+      {emphasis === 'focus' && (
+        <Polyline positions={points} pathOptions={{ color: '#ffffff', weight: 2.5, opacity: 0.95, dashArray: '0.5 13.5', lineCap: 'round', interactive: false, className: 'route-flow' }} />
+      )}
     </>
   )
 }

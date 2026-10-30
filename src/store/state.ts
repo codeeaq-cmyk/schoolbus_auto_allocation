@@ -2,9 +2,9 @@ import seed from '../data/seed.json'
 import { addDistanceTable, savedTables, type DistanceTable } from '../lib/distance'
 import type { AppState, Plan, RoutePath, Settings, Student, Vehicle } from '../lib/types'
 
-export const STATE_VERSION = 2
-export const STORAGE_KEY = 'smart-transport-demo/v2'
-const TABLES_KEY = 'smart-transport-demo/v2/distances'
+export const STATE_VERSION = 3
+export const STORAGE_KEY = 'ceeq-smart-transport/v3'
+const TABLES_KEY = 'ceeq-smart-transport/v3/distances'
 
 /** The signed-in parent in the demo; children they register are tagged with this id. */
 export const DEMO_PARENT = { id: 'parent-demo', name: 'Lakshmi Nair', phone: '+91 94470 12345' }

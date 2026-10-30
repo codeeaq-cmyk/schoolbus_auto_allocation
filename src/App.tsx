@@ -1,5 +1,7 @@
+import { MotionConfig } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import { AppHeader } from './components/AppHeader'
+import { PageFade } from './components/ui/motion'
 import { useRoute } from './lib/router'
 import { Landing } from './pages/Landing'
 import { ChildDetail } from './pages/parent/ChildDetail'
@@ -20,7 +22,7 @@ export default function App() {
 
   // On navigation: reset scroll, update the title, and move focus so screen readers announce the new page.
   useEffect(() => {
-    document.title = `${TITLES[area] ? `${TITLES[area]} · ` : ''}Smart Transport`
+    document.title = `${TITLES[area] ? `${TITLES[area]} · ` : ''}Ceeq Smart Transport`
     if (firstRender.current) {
       firstRender.current = false
       return
@@ -30,29 +32,36 @@ export default function App() {
   }, [route.path, area])
 
   let page
+  let pageKey = route.path
   if (area === 'parent') {
     if (section === 'request') page = <RequestBus key={route.query.get('edit') ?? 'new'} editId={route.query.get('edit')} />
     else if (section === 'child' && id) page = <ChildDetail key={id} id={id} isNew={route.query.get('new') === '1'} />
     else page = <ParentHome />
   } else if (area === 'school') {
+    // The school area keeps its navigation still and animates only the content inside.
+    pageKey = 'school'
     page = <SchoolArea route={route} />
   } else {
     page = <Landing />
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <button
-        type="button"
-        onClick={() => mainRef.current?.focus()}
-        className="sr-only z-50 rounded-xl bg-primary px-4 py-2 font-semibold text-on-primary focus:not-sr-only focus:fixed focus:left-4 focus:top-3"
-      >
-        Skip to content
-      </button>
-      <AppHeader area={area} />
-      <main ref={mainRef} tabIndex={-1} className="flex flex-1 flex-col focus:outline-none">
-        {page}
-      </main>
-    </div>
+    <MotionConfig reducedMotion="user">
+      <div className="flex min-h-dvh flex-col">
+        <button
+          type="button"
+          onClick={() => mainRef.current?.focus()}
+          className="sr-only z-50 rounded-xl bg-primary px-4 py-2 font-semibold text-on-primary focus:not-sr-only focus:fixed focus:left-4 focus:top-3"
+        >
+          Skip to content
+        </button>
+        <AppHeader area={area} />
+        <main ref={mainRef} tabIndex={-1} className="flex flex-1 flex-col focus:outline-none">
+          <PageFade pageKey={pageKey} className="flex flex-1 flex-col">
+            {page}
+          </PageFade>
+        </main>
+      </div>
+    </MotionConfig>
   )
 }

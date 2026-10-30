@@ -32,7 +32,7 @@ function cached(key: string, make: () => L.DivIcon) {
 
 export function schoolIcon() {
   return cached('school', () =>
-    L.divIcon({ className: 'map-icon', html: `<div class="pin-school">${svg('school', 20)}</div>`, iconSize: [40, 40], iconAnchor: [20, 20] }),
+    L.divIcon({ className: 'map-icon', html: `<div class="pin-school">${svg('school', 20)}</div>`, iconSize: [42, 42], iconAnchor: [21, 21] }),
   )
 }
 
@@ -54,8 +54,8 @@ export function homeIcon(draggable = false) {
   return cached(`home|${draggable}`, () =>
     L.divIcon({
       className: 'map-icon',
-      html: `<div class="pin-home${draggable ? ' is-draggable' : ''}">${svg('house', 17)}</div>`,
-      iconSize: [38, 38],
+      html: `<div class="pin-wrap"><span class="pin-pulse"></span><div class="pin-home${draggable ? ' is-draggable' : ''}">${svg('house', 17)}</div></div>`,
+      iconSize: [38, 46],
       // The pin's point sits below the rotated square.
       iconAnchor: [19, 46],
     }),
@@ -64,7 +64,7 @@ export function homeIcon(draggable = false) {
 
 export function pickupIcon(color: string) {
   return cached(`pickup|${color}`, () =>
-    L.divIcon({ className: 'map-icon', html: `<div class="pin-pickup" style="color:${color}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }),
+    L.divIcon({ className: 'map-icon', html: `<div class="pin-pickup" style="color:${color}"></div>`, iconSize: [20, 20], iconAnchor: [10, 10] }),
   )
 }
 

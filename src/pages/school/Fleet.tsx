@@ -21,6 +21,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react'
+import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { Marker, Tooltip } from 'react-leaflet'
 import { DecisionChip } from '../../components/ui/AutoChip'
@@ -31,10 +32,11 @@ import { NetworkLayers } from '../../components/map/NetworkLayers'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { CapacityBadge, CapacityMeter } from '../../components/ui/CapacityMeter'
-import { Stepper, Tabs } from '../../components/ui/controls'
+import { Segmented, Stepper, Tabs } from '../../components/ui/controls'
 import { Dialog } from '../../components/ui/Dialog'
 import { Field, Input, Select } from '../../components/ui/Field'
 import { EmptyState } from '../../components/ui/misc'
+import { Stagger, StaggerItem } from '../../components/ui/motion'
 import { useToast } from '../../components/ui/toast-context'
 import { VehicleChip, VehicleIcon } from '../../components/ui/VehicleChip'
 import { inkOn, nextColorSlot, routeColor } from '../../lib/colors'
@@ -46,6 +48,7 @@ import { canReach } from '../../lib/engine/plan'
 import type { RouteStatus, RouteView } from '../../lib/engine/view'
 import { inr, inrSigned, kmValue, plural } from '../../lib/format'
 import { formatDistance, haversine } from '../../lib/geo'
+import { EASE_OUT } from '../../lib/motion'
 import { navigate } from '../../lib/router'
 import { hasRoadData, nameForPoint, nearestRoad } from '../../lib/roads'
 import { formatClock, formatDuration } from '../../lib/time'
@@ -137,8 +140,9 @@ export function Fleet({ selectedId, initialTab }: { selectedId: string | null; i
   }
 
   return (
-    <div className="grid flex-1 grid-cols-1 lg:h-[calc(100dvh-7.25rem)] lg:grid-cols-[minmax(380px,460px)_1fr]">
-      <div className={cn('relative order-first h-[46vh] min-h-[320px] border-b border-line lg:order-none lg:col-start-2 lg:row-start-1 lg:h-auto lg:border-b-0 lg:border-l', clicking && 'map-crosshair')}>
+    // On desktop the list scrolls and the map stays put, so the height must beat the flex sizing.
+    <div className="grid flex-1 grid-cols-1 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:grid-cols-[minmax(380px,440px)_1fr] lg:grid-rows-[minmax(0,1fr)]">
+      <div className={cn('relative order-first h-[46vh] min-h-[320px] lg:order-none lg:col-start-2 lg:row-start-1 lg:h-auto', clicking && 'map-crosshair')}>
         <BaseMap center={state.settings.location} zoom={12} label={vehicle ? `Route of ${vehicle.label}. Drag the flag to change where it starts.` : 'Fleet map'}>
           <FitBounds points={focusPoints} fitKey={`fleet-${vehicle?.id ?? 'all'}`} />
           {showRoads && <RoadAccessLayer />}
@@ -158,14 +162,14 @@ export function Fleet({ selectedId, initialTab }: { selectedId: string | null; i
           {clicking && <MapClick onClick={onMapClick} />}
         </BaseMap>
         <div className="absolute right-3 top-3 z-10">
-          <Button size="sm" variant={showRoads ? 'primary' : 'secondary'} aria-pressed={showRoads} onClick={() => setShowRoads((v) => !v)}>
+          <Button size="md" variant={showRoads ? 'primary' : 'secondary'} aria-pressed={showRoads} onClick={() => setShowRoads((v) => !v)}>
             <Layers className="size-4" aria-hidden="true" />
             Road widths
           </Button>
         </div>
         {clicking && (
           <div className="pointer-events-none absolute inset-x-3 top-14 z-10 flex justify-center">
-            <div className="flex items-center gap-2 rounded-full bg-ink/90 px-3.5 py-2 text-xs font-semibold text-white shadow-float">
+            <div className="flex items-center gap-2 rounded-full bg-ink/90 px-3.5 py-2 text-xs font-semibold text-white">
               <MapPinPlus className="size-4" aria-hidden="true" />
               {settingEnd ? 'Click where this vehicle finishes its day' : 'Click a road to add a boarding point'}
             </div>
@@ -174,11 +178,13 @@ export function Fleet({ selectedId, initialTab }: { selectedId: string | null; i
         {showRoads && <MapLegend vehicles={[]} roadWidths />}
       </div>
 
-      <div className="flex flex-col lg:col-start-1 lg:row-start-1 lg:min-h-0 lg:overflow-y-auto">
+      <div className="scrollbar-soft flex flex-col lg:col-start-1 lg:row-start-1 lg:min-h-0 lg:overflow-y-auto">
         {vehicle && route ? (
-          <VehicleDetail key={vehicle.id} vehicle={vehicle} route={route} status={routeStatus[vehicle.id]} onEdit={() => setDialog('edit')} settingEnd={settingEnd} onSetEnd={setSettingEnd} />
+          <motion.div key={vehicle.id} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.32, ease: EASE_OUT }}>
+            <VehicleDetail vehicle={vehicle} route={route} status={routeStatus[vehicle.id]} onEdit={() => setDialog('edit')} settingEnd={settingEnd} onSetEnd={setSettingEnd} />
+          </motion.div>
         ) : (
-          <div className="flex flex-col gap-4 p-5">
+          <motion.div key="list" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }} className="flex flex-col gap-4 p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h1 className="text-2xl font-extrabold tracking-tight text-ink">Fleet & routes</h1>
@@ -203,30 +209,21 @@ export function Fleet({ selectedId, initialTab }: { selectedId: string | null; i
               <p className="rounded-xl bg-warning-soft px-3.5 py-2.5 text-sm font-medium text-warning-ink">That vehicle no longer exists. It may have been removed in another tab.</p>
             )}
 
-            <div className="flex rounded-xl bg-muted p-1" role="group" aria-label="Show">
-              {(
-                [
-                  ['vehicles', `Vehicles (${state.vehicles.length})`],
-                  ['stops', `Boarding points (${state.plan.stops.length})`],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={tab === id}
-                  onClick={() => {
-                    setTab(id)
-                    setAddingStop(false)
-                  }}
-                  className={cn('h-9 flex-1 cursor-pointer rounded-lg text-sm font-semibold transition-colors', tab === id ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink')}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              label="Show"
+              value={tab}
+              onChange={(id) => {
+                setTab(id)
+                setAddingStop(false)
+              }}
+              options={[
+                { id: 'vehicles', label: `Vehicles (${state.vehicles.length})` },
+                { id: 'stops', label: `Boarding points (${state.plan.stops.length})` },
+              ]}
+            />
 
             {tab === 'vehicles' ? <VehicleList onAdd={() => setDialog('add')} /> : selectedStop ? <StopEditor key={selectedStop.id} stop={selectedStop} onClose={() => setSelectedStopId(null)} /> : <StopList onSelect={setSelectedStopId} />}
-          </div>
+          </motion.div>
         )}
       </div>
 
@@ -337,15 +334,15 @@ function VehicleList({ onAdd }: { onAdd: () => void }) {
   }
   return (
     <>
-      <ul className="flex flex-col gap-2.5">
+      <Stagger as="ul" className="flex flex-col gap-2.5">
         {fleet.vehicles.map((v) => {
           const route = view.routes.get(v.vehicle.id)
           return (
-            <li key={v.vehicle.id}>
+            <StaggerItem as="li" key={v.vehicle.id}>
               <button
                 type="button"
                 onClick={() => selectVehicle(v.vehicle.id)}
-                className="group flex w-full cursor-pointer flex-col gap-3 rounded-2xl border border-line bg-surface p-4 text-left shadow-card transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-float"
+                className="group flex w-full cursor-pointer flex-col gap-3 rounded-3xl bg-surface p-4 text-left transition-[background-color,transform] hover:bg-primary-soft active:scale-[0.99]"
               >
                 <div className="flex w-full items-center gap-2">
                   <VehicleChip vehicle={v.vehicle} variant="solid" className="text-sm" />
@@ -374,11 +371,11 @@ function VehicleList({ onAdd }: { onAdd: () => void }) {
                   <Badge tone="neutral">Benched: kept out of the plan</Badge>
                 )}
               </button>
-            </li>
+            </StaggerItem>
           )
         })}
-      </ul>
-      <p className="rounded-2xl border border-dashed border-line-strong bg-primary-soft/60 p-4 text-sm text-ink-2">
+      </Stagger>
+      <p className="rounded-2xl bg-primary-soft/70 p-4 text-sm leading-relaxed text-ink-2">
         <strong className="text-ink">You only set each vehicle's start and end.</strong> Boarding points, which child rides what, and the driving order are worked out for you. Open a vehicle to overrule any of it.
       </p>
     </>
@@ -419,8 +416,8 @@ function RouteSummary({ route, status }: { route: RouteView; status: RouteStatus
 function Metric({ label, value, tone }: { label: string; value: ReactNode; tone?: 'danger' }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium text-ink-3">{label}</dt>
-      <dd className={cn('text-[15px] font-bold', tone === 'danger' ? 'text-danger-ink' : 'text-ink')}>{value}</dd>
+      <dt className="text-xs font-medium text-night-ink">{label}</dt>
+      <dd className={cn('text-[15px] font-bold tabular', tone === 'danger' ? 'text-danger-bright' : 'text-white')}>{value}</dd>
     </div>
   )
 }
@@ -461,7 +458,7 @@ function VehicleDetail({ vehicle, route, status, onEdit, settingEnd, onSetEnd }:
 
   return (
     <div className="flex flex-col">
-      <div className="border-b border-line p-5">
+      <div className="p-5 pb-3">
         <button type="button" onClick={() => selectVehicle(null)} className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-ink-3 hover:text-ink">
           <ArrowLeft className="size-4" aria-hidden="true" />
           All vehicles
@@ -482,7 +479,7 @@ function VehicleDetail({ vehicle, route, status, onEdit, settingEnd, onSetEnd }:
           </Button>
         </div>
 
-        <dl className="mt-4 grid grid-cols-3 gap-3 rounded-2xl bg-muted p-4">
+        <dl className="gradient-night mt-4 grid grid-cols-3 gap-3 rounded-3xl p-4 text-white">
           <Metric label="Fees a month" value={inr(money.revenue)} />
           <Metric label="Costs a month" value={inr(money.cost)} />
           <Metric label="Profit" value={inrSigned(money.profit)} tone={money.profit < 0 ? 'danger' : undefined} />
@@ -501,7 +498,7 @@ function VehicleDetail({ vehicle, route, status, onEdit, settingEnd, onSetEnd }:
         )}
 
         <div className="mt-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface px-3.5 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <Flag className="size-4 shrink-0 text-ink-3" aria-hidden="true" />
               <div className="min-w-0">
@@ -511,7 +508,7 @@ function VehicleDetail({ vehicle, route, status, onEdit, settingEnd, onSetEnd }:
             </div>
             <span className="shrink-0 text-xs text-ink-3">Drag the flag on the map</span>
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface px-3.5 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <School className="size-4 shrink-0 text-ink-3" aria-hidden="true" />
               <div className="min-w-0">
@@ -529,14 +526,14 @@ function VehicleDetail({ vehicle, route, status, onEdit, settingEnd, onSetEnd }:
               </Button>
             )}
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface px-3.5 py-2.5">
             <div className="min-w-0">
               <p className="text-sm font-bold text-ink">Seats</p>
               <p className="text-xs text-ink-3">{money.riders} taken</p>
             </div>
             <Stepper label="Seats" value={vehicle.seats} min={1} max={80} onChange={(seats) => update((s) => updateVehicle(s, vehicle.id, { seats }))} />
           </div>
-          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-3 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
+          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl bg-surface px-3.5 py-3 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
             <span className="min-w-0">
               <span className="block text-sm font-bold text-ink">In the plan</span>
               <span className="block text-xs text-ink-3">Switch off to bench it. Its fixed costs still count.</span>
@@ -602,7 +599,7 @@ function VehicleDetail({ vehicle, route, status, onEdit, settingEnd, onSetEnd }:
                 </Button>
                 <ol className="flex flex-col gap-1.5" aria-label="Stops in driving order">
                   {route.stops.map((s, i) => (
-                    <li key={s.stop.id} className="flex items-center gap-1.5 rounded-xl border border-line bg-surface p-1.5 pl-2.5">
+                    <li key={s.stop.id} className="flex items-center gap-1.5 rounded-2xl bg-surface p-1.5 pl-2.5">
                       <span
                         className={cn('grid size-6 shrink-0 place-items-center text-[11px] font-extrabold', s.stop.access === 'van' ? 'rounded-md' : 'rounded-full')}
                         style={{ background: routeColor(vehicle.colorSlot), color: inkOn(routeColor(vehicle.colorSlot)) }}
@@ -650,7 +647,7 @@ function VehicleDetail({ vehicle, route, status, onEdit, settingEnd, onSetEnd }:
                     Run sheet
                   </Button>
                 </div>
-                <ol className="divide-y divide-line rounded-2xl border border-line bg-surface">
+                <ol className="divide-y divide-line rounded-2xl bg-surface">
                   {riders.map(({ student, stop }) => (
                     <li key={student.id} className="flex items-center gap-3 px-3.5 py-2.5">
                       <div className="min-w-0 flex-1">
@@ -722,7 +719,7 @@ function StopList({ onSelect }: { onSelect: (id: string) => void }) {
       <ul className="flex flex-col gap-1.5">
         {stops.map((stop) => (
           <li key={stop.id}>
-            <button type="button" onClick={() => onSelect(stop.id)} className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-line bg-surface p-3 text-left transition-colors hover:border-line-strong">
+            <button type="button" onClick={() => onSelect(stop.id)} className="flex w-full cursor-pointer items-center gap-3 rounded-2xl bg-surface p-3 text-left transition-colors hover:bg-primary-soft">
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-ink">{stop.name}</span>
                 <span className="block truncate text-xs text-ink-3">

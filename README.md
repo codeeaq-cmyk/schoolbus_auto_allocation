@@ -1,4 +1,6 @@
-# Smart Transport: school transport that plans itself
+# Ceeq Smart Transport
+
+School transport that plans itself: a feature for school management systems.
 
 A working React demo of a feature for a school management app, set in Thiruvananthapuram (Trivandrum). The school enters its vehicles. Parents pin their homes. The system works out boarding points, bus or van, allocation, routes, times and fees, and shows what it all costs and earns. **Every automatic decision can be overruled by hand, and the system plans around the change.**
 
@@ -26,7 +28,7 @@ npm run seed       # rebuild the sample data (needs internet; see below)
 | --- | --- | --- |
 | **Boarding points** | The fewest stops that keep every child within the walking limit, on a road a vehicle can reach. Real named bus stops are preferred. | Adding, moving, renaming or removing a stop. A parent can also pick another nearby stop. |
 | **Bus or van** | From road class in OpenStreetMap: main roads fit a bus, narrow lanes only a van. A child in a lane with a main road in walking distance boards there, so one bus can serve them. | Marking a stop "van only" or "bus or van". |
-| **Which child rides what** | Lowest monthly running cost that respects seats, road access and the ride limit. | Pinning a child, or a whole stop, to a vehicle. |
+| **Which child rides what** | Lowest monthly running cost that respects seats, road access, the ride limit and the detour limit. Van seats are kept for lanes that have no other option. | Pinning a child, or a whole stop, to a vehicle. |
 | **Driving order** | Optimised for fuel and time on board. | Reordering stops, or locking a route. |
 | **Pickup and drop times** | Worked back from the school bell using road distances and vehicle speed. | Changing start time, speeds or stop time in Settings. |
 | **Fees** | By road distance from the boarding point to school, in slabs. | Editing the slabs, or setting one child's fee. |
@@ -35,7 +37,9 @@ You give each vehicle only a **type, seat count, start point and end point**. Th
 
 **Manual choices persist.** Pinned children, hand-placed stops and locked routes are kept when the system re-plans, and **Clear manual changes** on the overview returns everything to automatic.
 
-**Small changes stay small.** New requests slot into the current plan without moving anyone else. Re-planning starts from today's routes, so families aren't reshuffled over a minor edit. A full rebuild happens only when you ask for it or change the rules for stops.
+**Small changes stay small.** A new request takes a seat on a vehicle already passing nearby. If that vehicle is full, one rider who can use another vehicle just as easily may be moved to free a seat; their boarding point doesn't change. Re-planning starts from today's routes, so families aren't reshuffled over a minor edit. A full rebuild happens only when you ask for it or change the rules for stops, and a worse plan is never applied.
+
+**No long runs for one child.** A vehicle only takes on a new stop if the extra driving is within the detour limit (Settings, default 6 minutes) and doesn't cost more than about one and a half times the child's fee. Otherwise the family is told honestly that no vehicle passes nearby, is offered stops further away if they would rather walk, and the school sees what vehicle would help. The school can still send a vehicle anyway by pinning the child to it.
 
 ## What the school sees
 
@@ -52,7 +56,7 @@ Suggested improvements are priced by actually planning each change: add a vehicl
 Code is in `src/lib/engine`.
 
 1. **Boarding points (`boarding.ts`):** greedy maximum coverage over road points and real bus stops. Children with a wide road in reach get a stop any vehicle can serve; only those with none get a van-only stop.
-2. **Routing (`solver.ts`):** a capacitated vehicle routing problem with a mixed fleet and a different start per vehicle, solved with Large Neighbourhood Search (regret insertion, then tear out and re-insert stops, keeping what lowers cost). The objective is monthly cost in rupees: crew, fuel and upkeep per metre, a value on time on board, a steep penalty over the ride limit, and a penalty for leaving a child unseated. The random generator is seeded, so the same input gives the same plan.
+2. **Routing (`solver.ts`):** a capacitated vehicle routing problem with a mixed fleet and a different start per vehicle, solved with Large Neighbourhood Search (regret insertion, then tear out and re-insert stops, keeping what lowers cost, and returning to the best plan when progress stalls). The objective is monthly cost in rupees: crew, fuel and upkeep per metre, a value on time on board, a steep penalty over the ride limit, and a penalty for leaving a child unseated. The random generator is seeded, so the same input gives the same plan.
 3. **Keeping buses on wide roads (`services.ts`, `roads.ts`):** the public router only knows cars and takes shortcuts through lanes. Bus paths are checked against road widths and re-routed through extra points found by A* over the road grid. Whatever can't be avoided is flagged as "check on the ground".
 4. **Money (`economics.ts`):** closed-form per vehicle, so what-ifs are instant.
 
@@ -84,4 +88,4 @@ src/
 scripts/generate-seed.mjs   rebuilds data/ from OpenStreetMap using the real engine
 ```
 
-Stack: React 19, TypeScript, Vite, Tailwind CSS v4, Leaflet / react-leaflet, Radix Dialog, Lucide icons, Vitest.
+Stack: React 19, TypeScript, Vite, Tailwind CSS v4, Motion, Leaflet / react-leaflet, Radix Dialog, Lucide icons, Vitest. Animations respect the "reduce motion" system setting.

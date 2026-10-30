@@ -48,6 +48,8 @@ export interface SolverOptions {
   unservedValue: number
   /** Monthly cost per rider of moving a stop to a different vehicle. */
   moveValue: number
+  /** Monthly cost per rider of putting a child a bus could carry on a van, whose seats lanes depend on. */
+  vanSeatValue: number
   iterations: number
   seed: number
   /** Current routes by vehicle, as stop ids. Search starts here, so small changes stay small. */
@@ -102,7 +104,9 @@ export function solveRouting(stops: SolverStop[], vehicles: SolverVehicle[], opt
 
   const moveCost = (v: number, s: number) => {
     const previous = stops[s].previousVehicleId
-    return previous && previous !== vehicles[v].id ? stops[s].load * options.moveValue : 0
+    const moved = previous && previous !== vehicles[v].id ? stops[s].load * options.moveValue : 0
+    const vanSeats = vehicles[v].type === 'van' && stops[s].access === 'bus' ? stops[s].load * options.vanSeatValue : 0
+    return moved + vanSeats
   }
 
   /** Monthly cost of a vehicle running this sequence. */
@@ -314,7 +318,14 @@ export function solveRouting(stops: SolverStop[], vehicles: SolverVehicle[], opt
   let temperature = bestCost * (options.initial ? 0.0005 : 0.004)
   const cooling = iterations > 0 ? Math.pow(0.02, 1 / iterations) : 1
 
+  let lastImproved = 0
   for (let it = 0; it < iterations; it++) {
+    // Wandered too long without finding anything better: go back to the best plan and try from there.
+    if (it - lastImproved > 250) {
+      restore(best)
+      current = bestCost
+      lastImproved = it
+    }
     const saved = snapshot()
     const count = 2 + Math.floor(random() * Math.min(9, Math.max(2, n / 3)))
     const removed = pickRemovals(count)
@@ -334,6 +345,7 @@ export function solveRouting(stops: SolverStop[], vehicles: SolverVehicle[], opt
         current = total()
         bestCost = current
         best = snapshot()
+        lastImproved = it
       }
     } else {
       restore(saved)
