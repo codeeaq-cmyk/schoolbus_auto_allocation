@@ -4,9 +4,9 @@ import { SimClockContext, SimControlsContext } from './context'
 
 const FRAME_MS = 50
 
-/** Plays the morning run: every bus leaves its first stop so that it reaches school on time. */
+/** Plays the morning run: every vehicle leaves its start so that it reaches school on time. */
 export function SimulationProvider({ children }: { children: ReactNode }) {
-  const { result } = useStore()
+  const { view } = useStore()
   const [clock, setClock] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
   const [speed, setSpeed] = useState(1)
@@ -15,13 +15,13 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   const tripWindow = useMemo(() => {
     let start = Infinity
     let end = -Infinity
-    for (const route of result.routes.values()) {
+    for (const route of view.routes.values()) {
       if (route.geometry.points.length < 2) continue
       start = Math.min(start, route.departure)
       end = Math.max(end, route.arrival)
     }
     return Number.isFinite(start) ? { start: start - 2, end: end + 1 } : null
-  }, [result.routes])
+  }, [view.routes])
 
   useEffect(() => {
     if (!running || !tripWindow) return

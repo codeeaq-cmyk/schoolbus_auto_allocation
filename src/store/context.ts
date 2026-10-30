@@ -1,18 +1,15 @@
-import { createContext, useContext, type Dispatch } from 'react'
-import type { AssignmentResult } from '../lib/assign'
+import { createContext, useContext } from 'react'
+import type { FleetEconomics } from '../lib/engine/economics'
+import type { Recommendation } from '../lib/engine/recommend'
+import type { PlanView, RouteStatus } from '../lib/engine/view'
 import type { AppState } from '../lib/types'
-import type { Action } from './state'
-
-/**
- * none: no stops yet · loading: fetching the road path · road: road-snapped ·
- * straight: routing service unavailable, drawing straight segments instead.
- */
-export type RouteStatus = 'none' | 'loading' | 'road' | 'straight'
 
 export interface StoreValue {
   state: AppState
-  dispatch: Dispatch<Action>
-  result: AssignmentResult
+  /** Applies a change: pass any function from store/actions. */
+  update: (change: (state: AppState) => AppState) => void
+  view: PlanView
+  fleet: FleetEconomics
   routeStatus: Record<string, RouteStatus>
 }
 
@@ -22,4 +19,15 @@ export function useStore(): StoreValue {
   const value = useContext(StoreContext)
   if (!value) throw new Error('useStore must be used inside <StoreProvider>')
   return value
+}
+
+export interface RecommendationsValue {
+  items: Recommendation[]
+  analysing: boolean
+}
+
+export const RecommendationsContext = createContext<RecommendationsValue>({ items: [], analysing: false })
+
+export function useRecommendations(): RecommendationsValue {
+  return useContext(RecommendationsContext)
 }

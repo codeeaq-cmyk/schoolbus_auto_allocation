@@ -15,16 +15,16 @@ const roles = [
 ] as const
 
 export function AppHeader({ area }: { area: string | undefined }) {
-  const { state, dispatch } = useStore()
+  const { state, update } = useStore()
   const sim = useSimControls()
   const toast = useToast()
   const [confirmReset, setConfirmReset] = useState(false)
 
   const reset = () => {
     sim.stop()
-    dispatch({ type: 'replace', state: createSeedState() })
+    update(() => createSeedState())
     setConfirmReset(false)
-    toast({ tone: 'success', title: 'Demo data restored', description: '4 buses and 41 students are back to their starting state.' })
+    toast({ tone: 'success', title: 'Demo data restored', description: 'The fleet, children and plan are back to their starting state.' })
   }
 
   return (
@@ -73,7 +73,7 @@ export function AppHeader({ area }: { area: string | undefined }) {
         onOpenChange={setConfirmReset}
         size="sm"
         title="Reset the demo?"
-        description="Buses, routes, settings and every child you registered go back to the starting sample data. This can't be undone."
+        description="The fleet, plan, settings and every child you registered go back to the starting sample data. This can't be undone."
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmReset(false)}>

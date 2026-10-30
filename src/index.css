@@ -221,3 +221,29 @@
 .pin-bus.is-moving::after {
   animation: var(--animate-pulse-ring);
 }
+.pin-stop.is-van-only {
+  border-radius: 6px;
+}
+.pin-start {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 2px solid #fff;
+  box-shadow: var(--shadow-float);
+}
+.pin-start.is-draggable {
+  cursor: grab;
+}
+.road-access-image {
+  image-rendering: pixelated;
+}
+.pin-stop.is-compact {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+.pin-stop.is-compact.is-van-only {
+  border-radius: 3px;
+}

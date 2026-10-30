@@ -1,15 +1,18 @@
-import { BadgeCheck, Clock4, Footprints, Hourglass, MapPin, MapPinOff, Phone, Pin } from 'lucide-react'
+import { BadgeCheck, Clock4, Footprints, Hourglass, IndianRupee, MapPin, MapPinOff, Moon, Phone, Pin } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Badge } from '../../components/ui/Badge'
-import { BusChip } from '../../components/ui/BusChip'
-import { arrivalMinutes, waitlistPosition, type AssignmentResult } from '../../lib/assign'
+import { VehicleChip } from '../../components/ui/VehicleChip'
+import { waitReasonText } from '../../lib/engine/explain'
+import { VEHICLE_NAMES } from '../../lib/engine/presets'
+import type { StudentView } from '../../lib/engine/view'
+import { inr } from '../../lib/format'
 import { formatDistance } from '../../lib/geo'
 import { formatClock } from '../../lib/time'
-import type { Assignment, SchoolSettings, Student } from '../../lib/types'
+import type { Settings } from '../../lib/types'
 
-export function StatusBadge({ assignment }: { assignment: Assignment | undefined }) {
-  if (!assignment) return null
-  if (assignment.status === 'assigned') {
+export function StatusBadge({ student }: { student: StudentView | undefined }) {
+  if (!student) return null
+  if (student.status === 'seated') {
     return (
       <Badge tone="success" icon={<BadgeCheck />}>
         Seat confirmed
@@ -39,101 +42,63 @@ function Fact({ icon, label, value, sub }: { icon: ReactNode; label: string; val
 }
 
 interface DetailsProps {
-  student: Student
-  assignment: Assignment | undefined
-  result: AssignmentResult
-  students: Student[]
-  settings: SchoolSettings
+  student: StudentView | undefined
+  settings: Settings
   compact?: boolean
 }
 
-/** What the parent needs to know: which bus, where, when, and who to call. */
-export function AssignmentDetails({ student, assignment, result, students, settings, compact }: DetailsProps) {
-  if (!assignment) return null
-  const firstName = student.name.split(' ')[0]
+/** What the parent needs to know: which vehicle, where, when, how much and who to call. */
+export function AssignmentDetails({ student, settings, compact }: DetailsProps) {
+  if (!student) return null
 
-  if (assignment.status === 'assigned') {
-    const bus = result.routes.get(assignment.busId)?.bus
-    if (!bus) return null
+  if (student.status === 'seated') {
+    const { vehicle, stop } = student
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
-          <BusChip bus={bus} variant="solid" className="text-sm" />
-          <span className="text-sm font-medium text-ink-3">{bus.plate}</span>
-          {assignment.manual && (
+          <VehicleChip vehicle={vehicle} variant="solid" className="text-sm" />
+          <span className="text-sm font-medium text-ink-3">
+            {VEHICLE_NAMES[vehicle.type]}
+            {vehicle.plate ? ` · ${vehicle.plate}` : ''}
+          </span>
+          {(student.student.pinnedVehicleId || student.student.pinnedStopId) && (
             <Badge tone="primary" icon={<Pin />}>
-              Assigned by school
+              Set by hand
             </Badge>
           )}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Fact icon={<Clock4 />} label="Morning pickup" value={formatClock(assignment.pickupMinutes)} sub={`Reaches school ${formatClock(arrivalMinutes(settings))}`} />
-          <Fact
-            icon={<MapPin />}
-            label="Pickup point"
-            value={assignment.nearestStop ? `Near ${assignment.nearestStop.name}` : 'On the route'}
-            sub="Roadside, on the bus route"
-          />
-          <Fact icon={<Footprints />} label="Walk from home" value={formatDistance(assignment.walkMeters)} sub={`About ${Math.max(1, Math.round(assignment.walkMeters / 75))} min on foot`} />
+          <Fact icon={<MapPin />} label="Boarding point" value={stop.name} sub={`${formatDistance(student.walkMeters)} walk, about ${Math.max(1, Math.round(student.walkMeters / 75))} min`} />
+          <Fact icon={<Clock4 />} label="Morning pickup" value={formatClock(student.pickup)} sub={`At school by ${formatClock(student.route.arrival)}`} />
+          <Fact icon={<Moon />} label="Evening drop" value={`About ${formatClock(student.dropoff)}`} sub={`${Math.round(student.rideMin)} min on board`} />
+          <Fact icon={<IndianRupee />} label="Transport fee" value={`${inr(student.fee)} a month`} sub={student.student.feeOverride !== null ? 'Set by the school' : 'Based on distance to school'} />
           {!compact && (
             <Fact
               icon={<Phone />}
               label="Driver"
-              value={bus.driverName}
+              value={vehicle.driverName}
               sub={
-                <a className="font-semibold text-primary underline-offset-2 hover:underline" href={`tel:${bus.driverPhone.replace(/\s/g, '')}`}>
-                  {bus.driverPhone}
-                </a>
+                vehicle.driverPhone ? (
+                  <a className="font-semibold text-primary underline-offset-2 hover:underline" href={`tel:${vehicle.driverPhone.replace(/\s/g, '')}`}>
+                    {vehicle.driverPhone}
+                  </a>
+                ) : undefined
               }
             />
           )}
+          {!compact && <Fact icon={<Footprints />} label="Starts from" value={vehicle.start.name} sub={`Leaves at ${formatClock(student.route.departure)}`} />}
         </div>
       </div>
     )
   }
 
-  const nearestBus = assignment.nearestBusId ? result.routes.get(assignment.nearestBusId)?.bus : undefined
-  const position = waitlistPosition(result, students, student.id)
   return (
     <div className="flex flex-col gap-3">
-      {assignment.reason === 'buses-full' ? (
-        <>
-          <p className="text-[15px] text-ink-2">
-            {nearestBus ? (
-              <>
-                <BusChip bus={nearestBus} className="text-ink" /> passes {formatDistance(assignment.nearestMeters ?? 0)} from home, but every seat
-                on the buses near you is taken.
-              </>
-            ) : (
-              'Every bus near you is full.'
-            )}
-          </p>
-          {position && (
-            <p className="rounded-xl bg-warning-soft px-3.5 py-2.5 text-sm font-semibold text-warning-ink">
-              {firstName} is #{position} in the queue. When a seat opens up, it's assigned automatically and you'll see it here.
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <p className="flex items-start gap-2 text-[15px] text-ink-2">
-            <MapPinOff className="mt-0.5 size-5 shrink-0 text-warning-ink" aria-hidden="true" />
-            <span>
-              No bus route passes within {formatDistance(settings.maxWalkMeters)} of your home
-              {assignment.nearestMeters !== null && nearestBus && (
-                <>
-                  {' '}
-                  (the closest is <BusChip bus={nearestBus} className="text-ink" />, {formatDistance(assignment.nearestMeters)} away)
-                </>
-              )}
-              .
-            </span>
-          </p>
-          <p className="rounded-xl bg-warning-soft px-3.5 py-2.5 text-sm font-semibold text-warning-ink">
-            The transport team can see your request. If they extend a route to your area, {firstName} gets a seat automatically.
-          </p>
-        </>
-      )}
+      <p className="flex items-start gap-2 text-[15px] text-ink-2">
+        <MapPinOff className="mt-0.5 size-5 shrink-0 text-warning-ink" aria-hidden="true" />
+        <span>{waitReasonText(student.reason, settings)}</span>
+      </p>
+      <p className="rounded-xl bg-warning-soft px-3.5 py-2.5 text-sm font-semibold text-warning-ink">The school's transport team can see this request. The fee will be about {inr(student.fee)} a month once a seat is assigned.</p>
     </div>
   )
 }

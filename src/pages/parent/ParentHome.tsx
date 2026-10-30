@@ -14,19 +14,19 @@ function greeting() {
 }
 
 export function ParentHome() {
-  const { state, result } = useStore()
+  const { state, view } = useStore()
   const children = state.students.filter((s) => s.parentId === DEMO_PARENT.id).sort((a, b) => a.registeredAt - b.registeredAt)
 
   return (
     <div className="mx-auto w-full max-w-[1100px] px-4 py-8 sm:px-6">
       <PageHeader
         eyebrow={`${greeting()}, ${DEMO_PARENT.name.split(' ')[0]}`}
-        title="School bus"
-        description={`Request a seat on the ${state.settings.name} bus and see exactly where and when your child will be picked up.`}
+        title="School transport"
+        description={`Request a seat with ${state.settings.name} and see exactly where and when your child will be picked up.`}
         actions={
           <ButtonLink href={href('/parent/request')} size="lg">
             <Plus className="size-5" aria-hidden="true" />
-            Request a bus seat
+            Request a seat
           </ButtonLink>
         }
       />
@@ -40,21 +40,21 @@ export function ParentHome() {
             <Card>
               <EmptyState
                 icon={<Bus />}
-                title="No bus requests yet"
+                title="No requests yet"
                 action={
                   <ButtonLink href={href('/parent/request')}>
                     <Plus className="size-4" aria-hidden="true" />
-                    Request a bus seat
+                    Request a seat
                   </ButtonLink>
                 }
               >
-                Drop a pin at your home and your child is matched to the nearest bus route with a free seat. It takes about a minute.
+                Drop a pin at your home. The system picks the boarding point and vehicle, and tells you the pickup time and fee. It takes about a minute.
               </EmptyState>
             </Card>
           ) : (
             <ul className="grid gap-4">
               {children.map((child) => {
-                const assignment = result.byStudent.get(child.id)
+                const student = view.students.get(child.id)
                 return (
                   <li key={child.id}>
                     <Card className="overflow-hidden animate-rise">
@@ -66,16 +66,13 @@ export function ParentHome() {
                             {child.grade} · {child.address}
                           </p>
                         </div>
-                        <StatusBadge assignment={assignment} />
+                        <StatusBadge student={student} />
                       </div>
                       <div className="px-5 pb-5">
-                        <AssignmentDetails student={child} assignment={assignment} result={result} students={state.students} settings={state.settings} compact />
+                        <AssignmentDetails student={student} settings={state.settings} compact />
                       </div>
-                      <a
-                        href={href(`/parent/child/${child.id}`)}
-                        className="flex items-center justify-between border-t border-line bg-muted/60 px-5 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary-soft"
-                      >
-                        {assignment?.status === 'assigned' ? 'Bus details & live tracking' : 'View request'}
+                      <a href={href(`/parent/child/${child.id}`)} className="flex items-center justify-between border-t border-line bg-muted/60 px-5 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary-soft">
+                        {student?.status === 'seated' ? 'Full details & live tracking' : 'View request'}
                         <ArrowRight className="size-4" aria-hidden="true" />
                       </a>
                     </Card>
@@ -90,13 +87,14 @@ export function ParentHome() {
           <Card className="p-5">
             <h2 className="flex items-center gap-2 text-[15px] font-bold text-ink">
               <Info className="size-4 text-primary" aria-hidden="true" />
-              How seats are assigned
+              How it works
             </h2>
             <ul className="mt-3 flex flex-col gap-3 text-sm text-ink-2">
-              <li>Your child gets the bus whose route passes closest to your home, within {formatDistance(state.settings.maxWalkMeters)} on foot.</li>
-              <li>Seats go in request order, so an earlier request is never bumped by a later one.</li>
-              <li>If the nearest buses are full, you join a queue and are seated automatically when a seat opens or the school adds a bus.</li>
-              <li>Pickup times assume the bus reaches school {state.settings.arrivalBufferMin} minutes before the bell.</li>
+              <li>You pin your home. The system picks a boarding point within {formatDistance(state.settings.maxWalkMeters)} on foot, on a road a vehicle can use.</li>
+              <li>Main roads get a bus or van. If your lane is narrow and no main road is close, a van comes to the lane.</li>
+              <li>Your fee depends on how far your boarding point is from school.</li>
+              <li>Prefer a different nearby stop? You can pick one yourself.</li>
+              <li>If seats are full, you join a queue and are seated automatically when one opens. Earlier requests are favoured.</li>
             </ul>
           </Card>
         </aside>

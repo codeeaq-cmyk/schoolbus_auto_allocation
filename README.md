@@ -1,6 +1,6 @@
-# Smart Transport: automatic school bus seat assignment
+# Smart Transport: school transport that plans itself
 
-A working React demo of a feature for a school management app. Parents pin their home on a map and their child is automatically given a seat on the bus whose route passes closest. The school manages buses, seat counts and routes.
+A working React demo of a feature for a school management app, set in Thiruvananthapuram (Trivandrum). The school enters its vehicles. Parents pin their homes. The system works out boarding points, bus or van, allocation, routes, times and fees, and shows what it all costs and earns. **Every automatic decision can be overruled by hand, and the system plans around the change.**
 
 ## Run it
 
@@ -11,48 +11,77 @@ npm run dev
 
 Open the printed URL (default `http://localhost:5173`). No backend or API keys are needed. Data lives in the browser's `localStorage`, and **Reset demo** in the header restores the sample data.
 
-Tip: open the parent app and the school admin in two tabs side by side. Changes sync between tabs instantly.
+Tip: open the parent app and school admin in two tabs. Changes sync between them instantly.
 
-## What's in the demo
+```bash
+npm test           # engine rules: seats, road access, overrides, money, timing
+npm run typecheck
+npm run lint
+npm run seed       # rebuild the sample data (needs internet; see below)
+```
 
-**Parent app** (`#/parent`)
-- Request a seat: child details, then drop a home pin by tapping the map, searching an address, or using GPS. The shaded band shows everywhere within walking distance of a route.
-- A live preview runs the real assignment engine as the pin moves: which bus, pickup point, pickup time, walking distance. It also shows the waitlist position if the nearby buses are full.
-- Child page: bus, driver contact, the morning route timeline with your pickup point, and **live tracking**, a sped-up simulation of tomorrow's run with an ETA and a "head out now" alert.
-- Change the home location or cancel the request; the seat is released to the next child in the queue.
+## What is automatic, and how to overrule it
 
-**School admin** (`#/school`)
-- **Overview:** seats filled, waitlist, average walk, a map of every route and student home, seats per bus, and the latest requests. You can simulate the whole fleet's morning run.
-- **Fleet & routes:** add, edit or remove buses; change seats with a stepper (waitlisted students are seated instantly); draw routes by clicking stops on the map; drag stops to adjust them; reorder or rename stops. Routes snap to real roads. Each bus has a pickup-order manifest with CSV export.
-- **Students:** search and filter everyone; see each assignment; pin a student to a specific bus (override) or set them back to automatic; remove a student; export to CSV.
-- **Settings:** school start time, arrival buffer, average speed, maximum walking distance, and school location. The page previews how many students would gain or lose a seat before you save.
+| The system decides | How | You can overrule it by |
+| --- | --- | --- |
+| **Boarding points** | The fewest stops that keep every child within the walking limit, on a road a vehicle can reach. Real named bus stops are preferred. | Adding, moving, renaming or removing a stop. A parent can also pick another nearby stop. |
+| **Bus or van** | From road class in OpenStreetMap: main roads fit a bus, narrow lanes only a van. A child in a lane with a main road in walking distance boards there, so one bus can serve them. | Marking a stop "van only" or "bus or van". |
+| **Which child rides what** | Lowest monthly running cost that respects seats, road access and the ride limit. | Pinning a child, or a whole stop, to a vehicle. |
+| **Driving order** | Optimised for fuel and time on board. | Reordering stops, or locking a route. |
+| **Pickup and drop times** | Worked back from the school bell using road distances and vehicle speed. | Changing start time, speeds or stop time in Settings. |
+| **Fees** | By road distance from the boarding point to school, in slabs. | Editing the slabs, or setting one child's fee. |
 
-## How seats are assigned
+You give each vehicle only a **type, seat count, start point and end point**. The start point is suggested and can be dragged on the map; the end point defaults to the school.
 
-`src/lib/assign.ts` derives every assignment from the current state, so any change re-balances seats deterministically:
+**Manual choices persist.** Pinned children, hand-placed stops and locked routes are kept when the system re-plans, and **Clear manual changes** on the overview returns everything to automatic.
 
-1. Students the school **pinned** to a bus keep that bus while it has seats.
-2. Everyone else is served **first come, first served** by request time, so a later request never bumps an earlier one.
-3. Each student gets the **closest route within the walking limit** (default 800 m) that still has a free seat. The pickup point is the nearest point on that route.
-4. Otherwise they are **waitlisted**: *buses full* if a route is close enough, *outside every route* if none is.
+**Small changes stay small.** New requests slot into the current plan without moving anyone else. Re-planning starts from today's routes, so families aren't reshuffled over a minor edit. A full rebuild happens only when you ask for it or change the rules for stops.
 
-Pickup times are worked back from the school arrival time (start time minus buffer) using the distance along the route and the average bus speed.
+## What the school sees
+
+- **Overview:** profit, seats, distance and rides; the live map (with a road-width overlay); suggested improvements; waitlist; a log of what the system did and what people changed.
+- **Fleet & routes:** each vehicle's money, route and riders; boarding points; a run sheet to export.
+- **Students:** every child's decision with the reason in plain language, and the controls to change it.
+- **Analytics:** profit by vehicle, where the money goes, ride-time spread, fee income by distance, the comparison with a plan made by hand, and a what-if on diesel, fees and crew pay. Every chart has a table view.
+- **Settings:** autopilot on or off, plan for lowest cost / balanced / shortest rides, rules, costs and fees, with a preview of the effect before saving.
+
+Suggested improvements are priced by actually planning each change: add a vehicle for the waitlist, bench one, switch a bus to a van, move a start point.
+
+## How the planning works
+
+Code is in `src/lib/engine`.
+
+1. **Boarding points (`boarding.ts`):** greedy maximum coverage over road points and real bus stops. Children with a wide road in reach get a stop any vehicle can serve; only those with none get a van-only stop.
+2. **Routing (`solver.ts`):** a capacitated vehicle routing problem with a mixed fleet and a different start per vehicle, solved with Large Neighbourhood Search (regret insertion, then tear out and re-insert stops, keeping what lowers cost). The objective is monthly cost in rupees: crew, fuel and upkeep per metre, a value on time on board, a steep penalty over the ride limit, and a penalty for leaving a child unseated. The random generator is seeded, so the same input gives the same plan.
+3. **Keeping buses on wide roads (`services.ts`, `roads.ts`):** the public router only knows cars and takes shortcuts through lanes. Bus paths are checked against road widths and re-routed through extra points found by A* over the road grid. Whatever can't be avoided is flagged as "check on the ground".
+4. **Money (`economics.ts`):** closed-form per vehicle, so what-ifs are instant.
+
+## What to trust, and what not to
+
+- **Costs and fees are sample figures**, not data from a real school. Replace them in Settings and in each vehicle's running costs.
+- **Road widths are estimates.** OpenStreetMap rarely records width (0 of 397 roads sampled near the school; 23 had lane counts), so width comes from road class, with width and lane tags used when present. Check routes on the ground before relying on them.
+- **The "by hand" comparison is a model**, not a measured real-world plan. It is described on the Analytics page and in `baseline.ts`, and it respects the same seats and road limits. Treat its numbers as an indication.
+- **The school, children and families are fictional.** Homes are placed on real roads so the geometry is realistic.
+- The plan assumes one morning and one evening run per vehicle. Multiple runs per vehicle, traffic by time of day, and live GPS are not modelled; tracking is a simulation.
+
+## External services
+
+Map tiles come from OpenStreetMap, road routes and distances from the public OSRM demo server, and address search from Nominatim. All are free, rate-limited public endpoints: fine for a demo, not for production. The sample plan ships with its routes included, so it loads without them. If routing is unreachable later, routes fall back to dashed estimates and planning continues on estimated distances.
+
+The road data covers roughly 8.40–8.65°N, 76.83–77.06°E. Homes outside it are treated as too far.
 
 ## Project layout
 
 ```
 src/
-  lib/          assignment engine, geometry, time, map services, router
-  store/        app state (reducer), localStorage persistence, cross-tab sync, road-path sync
+  lib/engine/   boarding points, solver, plan updates, economics, baseline, recommendations
+  lib/          road grid, distances, map services, geometry, formatting, router
+  store/        app state, every state change (actions.ts), persistence, tab sync, route sync
   sim/          morning-run simulation clock
-  components/   UI kit (buttons, fields, dialog, tabs, meters…) and map layers
+  components/   UI kit, map layers, charts
   pages/        Landing, parent/*, school/*
-  data/seed.json  sample school, 4 buses with road geometry, 41 students (Bengaluru)
-scripts/generate-seed.mjs  regenerates seed.json (`npm run seed`, needs internet)
+  data/         roads.json (road grid, place names), seed.json (sample plan)
+scripts/generate-seed.mjs   rebuilds data/ from OpenStreetMap using the real engine
 ```
 
-## External services
-
-The map tiles come from OpenStreetMap, routes are snapped to roads by the public OSRM demo server, and address search uses Nominatim. All three are free, rate-limited public endpoints that are fine for a demo but not for production. If routing is unreachable, a route falls back to straight dashed lines between stops, and the rest of the app keeps working.
-
-Stack: React 19, TypeScript, Vite, Tailwind CSS v4, Leaflet / react-leaflet, Radix Dialog, Lucide icons.
+Stack: React 19, TypeScript, Vite, Tailwind CSS v4, Leaflet / react-leaflet, Radix Dialog, Lucide icons, Vitest.

@@ -20,6 +20,7 @@ export function BaseMap({ center, zoom = 13, label, className, interactive = tru
         center={[center.lat, center.lng]}
         zoom={zoom}
         zoomControl={false}
+        zoomSnap={0.5}
         scrollWheelZoom={interactive}
         dragging={interactive}
         doubleClickZoom={interactive}

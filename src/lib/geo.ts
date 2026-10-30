@@ -1,4 +1,4 @@
-import type { Bus, LatLng } from './types'
+import type { LatLng } from './types'
 
 const EARTH_RADIUS = 6371000
 const RAD = Math.PI / 180
@@ -92,24 +92,8 @@ export function pointAlong(route: RouteGeometry, distance: number): { point: Lat
   return { point: { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t }, heading }
 }
 
-/** The points a bus must pass through: every stop, then the school. */
-export function waypointsOf(bus: Bus, school: LatLng): LatLng[] {
-  return [...bus.stops.map((s) => s.position), school]
-}
-
 export function routeKey(points: LatLng[]): string {
   return points.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join(';')
-}
-
-/** True when the stored road path still matches the bus's stops and the school location. */
-export function hasFreshPath(bus: Bus, school: LatLng): boolean {
-  return bus.path !== null && bus.pathKey === routeKey(waypointsOf(bus, school))
-}
-
-/** Road path if it is fresh, otherwise straight lines between waypoints. */
-export function routePoints(bus: Bus, school: LatLng): LatLng[] {
-  if (bus.stops.length === 0) return []
-  return hasFreshPath(bus, school) ? bus.path! : waypointsOf(bus, school)
 }
 
 export function formatDistance(meters: number): string {
